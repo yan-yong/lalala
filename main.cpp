@@ -33,6 +33,8 @@ static void SetupSignalHandler(bool is_worker);
 
 static void WorkerRuntine(unsigned int low_range[4], unsigned int high_range[4])
 {
+    for(int i = 3; i < sysconf(_SC_OPEN_MAX); i++)
+        close(i);
     SetupSignalHandler(true);
     Fetcher::Params fetch_params;
     memset(&fetch_params, 0, sizeof(fetch_params));
@@ -117,11 +119,16 @@ static void SigChildHandler(int sig)
                 continue;
             return;
         }
-        LOG_INFO("Found process %d quited.\n", pid);
         for(unsigned i = 0; i < g_proc_num && g_proc_info[i].pid_; i++) 
         {
             if(pid == g_proc_info[i].pid_) 
             {
+                LOG_INFO("Found process %d (%d.%d.%d.%d - %d.%d.%d.%d) quited.\n", pid, 
+                    g_proc_info[i].low_range_[0], g_proc_info[i].low_range_[1], 
+                    g_proc_info[i].low_range_[2], g_proc_info[i].low_range_[3], 
+                    g_proc_info[i].high_range_[0], g_proc_info[i].high_range_[1], 
+                    g_proc_info[i].high_range_[2], g_proc_info[i].high_range_[3]);
+
                 g_proc_info[i].pid_ = 0;
                 std::swap(g_proc_info[i], g_proc_info[g_proc_num - 1]);
                 --g_proc_num;

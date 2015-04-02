@@ -111,7 +111,7 @@ ProxyScanner::ProxyScanner(Fetcher::Params fetch_params,
     low_range_[2] = low_range_[3] = 0;
     high_range_[0] = high_range_[1] = 255;
     high_range_[2] = high_range_[3] = 255;
-    __load_offset_file();
+    //__load_offset_file();
     uint16_t scan_ports[] = {80, 8080, 3128, 8118, 808};
     scan_port_.assign(scan_ports, scan_ports + sizeof(scan_ports)/sizeof(*scan_ports));
     memcpy(&params_, &fetch_params, sizeof(fetch_params));
@@ -204,7 +204,10 @@ void ProxyScanner::GetScanProxyRequest(
             //LOG_INFO("remain %zd\n", remain);
             return;
         }
-        LOG_INFO("####### Start Scan ########\n");
+        LOG_INFO("####### Start scan from %d.%d.%d.%d (%d.%d.%d.%d - %d.%d.%d.%d) ########\n",
+            offset_[0], offset_[1], offset_[2], offset_[3],
+            low_range_[0], low_range_[1], low_range_[2], low_range_[3],
+            high_range_[0], high_range_[1], high_range_[2], high_range_[3]);
         scan_time_ = cur_time;
     }
 
@@ -247,7 +250,10 @@ void ProxyScanner::GetScanProxyRequest(
         //检查是否结束
         if(offset_[0] > high_range_[0])
         {
-            LOG_INFO("####### End Scan ########\n");
+            LOG_INFO("####### End scan from %d.%d.%d.%d (%d.%d.%d.%d - %d.%d.%d.%d) ########\n",
+                offset_[0], offset_[1], offset_[2], offset_[3],
+                low_range_[0], low_range_[1], low_range_[2], low_range_[3],
+                high_range_[0], high_range_[1], high_range_[2], high_range_[3]);
             memcpy(offset_, low_range_, sizeof(low_range_));
             port_idx_ = 0;
             return;
@@ -323,8 +329,8 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
     {
         LOG_INFO("errno: %s %s %hu\n", strerror(fetch_result.err_num), 
             proxy->ip_.c_str(), proxy->port_);
-        if(__remain_time(offset_save_time_, current_time_ms(), offset_save_interval_))
-            __save_offset_file();
+        //if(__remain_time(offset_save_time_, current_time_ms(), offset_save_interval_))
+        //    __save_offset_file();
     }
 
     //if(fetch_result.err_num == 0)
@@ -344,10 +350,8 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
         }
         else
             HandleProxyDelete(proxy);
-        return;
     }
-
-    if(proxy->state_ == Proxy::SCAN_HTTPS)
+    else if(proxy->state_ == Proxy::SCAN_HTTPS)
     {
         if(fetch_result.err_num == 0 && resp->Body.size() == try_https_size_)
         {
@@ -361,6 +365,7 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
         }
         HandleProxyUpdate(proxy);
     }
+    delete resp;
 }
 
 void ProxyScanner::SetScanRange(unsigned low_range[4], unsigned high_range[4])
@@ -451,7 +456,7 @@ struct RequestData* ProxyScanner::CreateRequestData(void * contex)
     req->Headers.Add("Accept-Encoding", "*");
     req->Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/31.0.1650.63 Sa    fari/537.36 SE 2.X MetaSr 1.0");
     req->Close();
-    LOG_INFO("request %s %u.\n", proxy->ip_.c_str(), proxy->port_);
+    //LOG_INFO("request %s %u.\n", proxy->ip_.c_str(), proxy->port_);
     return req;
 }
 
