@@ -220,10 +220,7 @@ void ProxyScanner::GetScanProxyRequest(
 void ProxyScanner::HandleProxyDelete(Proxy * proxy)
 {
     if(proxy->request_cnt_ > 1)
-    {
         proxy_set_->erase(*proxy);
-        return; 
-    }
     delete proxy;
 }
 
@@ -333,9 +330,14 @@ void ProxyScanner::RequestGenerator(
         ProxySet::HashKey idx = 0;
         for(int i = 0; i < n; i++)
         {
-            Proxy * proxy = proxy_set_->get_next(idx);
-            if(!proxy)
+            Proxy * proxy = new Proxy();
+            if(!proxy_set_->get_next(idx, *proxy))
+            {
+                delete proxy;
                 break;
+            }
+            proxy->state_ = Proxy::SCAN_HTTP;
+            ++proxy->request_cnt_; 
             req_vec.push_back(CreateFetcherRequest(proxy));
         }
         validate_time_ = cur_time;
@@ -372,7 +374,7 @@ struct RequestData* ProxyScanner::CreateRequestData(void * contex)
     req->Headers.Add("Accept", "*/*");
     req->Headers.Add("Accept-Language", "zh-cn");
     req->Headers.Add("Accept-Encoding", "*");
-    req->Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/31.0.1650.63 Sa    fari/537.36 SE 2.X MetaSr 1.0");
+    req->Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 6.1)");
     req->Close();
     //LOG_INFO("request %s %u.\n", proxy->ip_.c_str(), proxy->port_);
     return req;

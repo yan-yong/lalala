@@ -38,6 +38,10 @@ struct Proxy
         sizeof(ip_) - sizeof(port_) - 
         sizeof(request_cnt_) - sizeof(request_time_) - 1];
 
+    Proxy()
+    {
+    }
+
     Proxy(std::string ip, uint16_t port):
         state_(SCAN_IDLE), port_(port), 
         request_cnt_(0),  request_time_(0), 
@@ -45,6 +49,8 @@ struct Proxy
         https_enable_(0), is_foreign(0)
     {
         memset(ip_, 0, sizeof(ip_));
+        strcpy(ip_, ip.c_str());
+        port_ = port;
     }
     ~Proxy()
     {
@@ -75,7 +81,7 @@ struct Proxy
     {
         return get_sockaddr_in(ip_, port_);
     }
-};
+} __attribute__((packed));
 
 struct HashFunctor
 {

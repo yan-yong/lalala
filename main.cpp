@@ -29,6 +29,7 @@ struct ProcessInfo
         memset(high_range_, 0, sizeof(high_range_));
     }
 } g_proc_info[MAX_PROCESS_CNT];
+
 static ProxySet * g_proxy_set = NULL;
 /* end */
 
@@ -39,12 +40,13 @@ class ProxyService: public HttpServer
     {  
         Json::Value json_lst;
         ProxySet::HashKey idx = 0;
-        Proxy* proxy = NULL; 
-        while((proxy = g_proxy_set->get_next(idx)) != NULL)
+        Proxy* proxy = new Proxy(); 
+        while(g_proxy_set->get_next(idx, *proxy))
         {
             Json::Value cur_json = proxy->ToJson();
             json_lst.append(cur_json);
         }
+        delete proxy;
         std::string response_content = json_lst.toStyledString();
         session->m_reply->status = http::server4::reply::ok;
         session->m_reply->content= response_content;
@@ -89,7 +91,7 @@ static void SpawnWorkerProcess()
     unsigned worker_process_count = g_cfg->worker_process_count_;
     unsigned* low_range = g_cfg->scan_low_range_;
     unsigned* high_range= g_cfg->scan_high_range_;
-    assert(worker_process_count < MAX_PROCESS_CNT);
+    assert(worker_process_count < (unsigned)MAX_PROCESS_CNT);
     int range_interval = (high_range[0] - low_range[0]) / worker_process_count;
     if(range_interval == 0)
         range_interval = 1;
