@@ -24,12 +24,17 @@ struct Config
     char* try_http_url_;
     unsigned try_http_size_; 
     char* try_https_url_;
-    unsigned try_https_size_; 
+    unsigned try_https_size_;
+    int shm_key_;
+    unsigned shm_size_;
+    unsigned max_proxy_num_;
+
+    std::vector<uint16_t> port_vec_;
 
 public:
     Config(const char* config_file)
     {
-        memset(this, 0, sizeof(Config));
+        memset(this, 0, (char*)&port_vec_ - (char*)this);
         config_file_ = strdup(config_file);
     }
     ~Config()
@@ -116,6 +121,16 @@ public:
         std::string try_https_url = pt.get<std::string>("Root.TryHttpsUrl");
         try_https_url_ = strdup(try_https_url.c_str());
         try_https_size_= pt.get<unsigned>("Root.TryHttpsUrl.<xmlattr>.size");
+
+        std::string scan_port_str = pt.get<std::string>("Root.ScanPort");
+        std::vector<std::string> port_vec;
+        split_string(scan_port_str.c_str(), ":", port_vec);
+        for(unsigned i = 0; i < port_vec.size(); i++)
+            port_vec_.push_back((uint16_t)atoi(port_vec[i].c_str()));
+
+        shm_key_ = pt.get<int>("Root.ShmKey"); 
+        shm_size_= pt.get<unsigned>("Root.ShmSize");        
+        max_proxy_num_ = pt.get<unsigned>("Root.MaxProxyNum");
 
         return 0;
     }

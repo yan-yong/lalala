@@ -13,8 +13,82 @@
 #include "lock/lock.hpp"
 #include "utility/net_utility.h"
 #include "fetcher/Fetcher.hpp"
+#include "shm/ShareHashSet.hpp" 
+#include "utility/murmur_hash.h"
+#include "jsoncpp/include/json/json.h"
+ 
+struct Proxy
+{
+    static const unsigned PROXY_SIZE = 50; 
+    enum State
+    {
+        SCAN_IDLE,
+        SCAN_HTTP,
+        SCAN_HTTPS,
+    } state_;
+    char ip_[16];
+    uint16_t port_;
+    unsigned request_cnt_;
+    time_t request_time_;
+    unsigned char data_changed_:1;
+    unsigned char http_enable_ :1;
+    unsigned char https_enable_:1;
+    unsigned char is_foreign   :1;
+    char fill_buf_[PROXY_SIZE - sizeof(state_) - 
+        sizeof(ip_) - sizeof(port_) - 
+        sizeof(request_cnt_) - sizeof(request_time_) - 1];
 
-class Proxy;
+    Proxy(std::string ip, uint16_t port):
+        state_(SCAN_IDLE), port_(port), 
+        request_cnt_(0),  request_time_(0), 
+        data_changed_(0), http_enable_(0), 
+        https_enable_(0), is_foreign(0)
+    {
+        memset(ip_, 0, sizeof(ip_));
+    }
+    ~Proxy()
+    {
+    }
+    std::string ToString() const
+    {
+        char buf[100];
+        snprintf(buf, 100, "%s:%hu", ip_, port_);
+        return buf;
+    }
+    Json::Value ToJson() const
+    {
+        Json::Value json_val;
+        json_val["addr"] = ToString();
+        if(https_enable_)
+            json_val["https"] = "1";
+        char cnt_str[10];
+        snprintf(cnt_str, 10, "%u", request_cnt_);
+        json_val["avail"] = cnt_str;
+        return json_val;
+    }
+    bool operator == (const Proxy& other)
+    {
+        return strncmp(ip_, other.ip_, 16) == 0 
+            && port_ != other.port_;
+    }
+    struct sockaddr * AcquireSockAddr() const
+    {
+        return get_sockaddr_in(ip_, port_);
+    }
+};
+
+struct HashFunctor
+{
+    uint64_t operator () (const Proxy& proxy)
+    {
+        uint64_t val = 0;
+        std::string proxy_str = proxy.ToString();
+        MurmurHash_x64_64(proxy_str.c_str(), proxy_str.size(), &val);
+        return val; 
+    }
+};
+
+typedef ShareHashSet<Proxy, HashFunctor> ProxySet; 
 
 class ProxyScanner: protected IMessageEvents
 {
@@ -39,9 +113,8 @@ protected:
     RawFetcherRequest CreateFetcherRequest(Proxy* proxy);
  
 public:
-    ProxyScanner(Fetcher::Params fetch_params,
-        const char* offset_file = NULL,
-        time_t offset_save_sec  = 60, 
+    ProxyScanner(ProxySet * proxy_set,
+        Fetcher::Params fetch_params,
         const char* eth_name = NULL);
     virtual ~ProxyScanner(){}
     void SetHttpTryUrl(std::string try_url, size_t page_size);
@@ -75,8 +148,7 @@ protected:
     time_t validate_interval_;
     time_t scan_time_;
     time_t scan_interval_; 
-    boost::unordered_set<Proxy*> proxy_set_;
-    boost::unordered_set<Proxy*>::iterator update_itr_;
+    ProxySet *proxy_set_;
     bool stopped_;
     std::queue<RawFetcherRequest> req_queue_;
 };

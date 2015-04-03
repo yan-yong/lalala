@@ -2,54 +2,10 @@
 #include "fetcher/Fetcher.hpp"
 #include "utility/net_utility.h"
 #include "boost/bind.hpp"
-#include <httpparser/TUtility.hpp>
+#include "httpparser/TUtility.hpp"
 #include "httpparser/URI.hpp"
 #include "httpparser/HttpFetchProtocal.hpp"
 #include "log/log.h"
-
-struct Proxy
-{
-    enum State
-    {
-        SCAN_IDLE,
-        SCAN_HTTP,
-        SCAN_HTTPS,
-    } state_;
-    std::string ip_;
-    uint16_t port_;
-    unsigned char data_changed_:1;
-    unsigned char http_enable_ :1;
-    unsigned char https_enable_:1;
-    unsigned char is_foreign   :1;
-    unsigned request_cnt_;
-    time_t request_time_;
-
-    Proxy(std::string ip, uint16_t port):
-        state_(SCAN_IDLE), ip_(ip), 
-        port_(port), data_changed_(0),
-        http_enable_(0), https_enable_(0),
-        request_cnt_(0), request_time_(0) 
-    {
-    }
-    ~Proxy()
-    {
-    }
-    std::string ToString() const
-    {
-        char buf[1024];
-        snprintf(buf, 1024, "%s:%hu", ip_.c_str(), port_);
-        return buf;
-    }
-    struct sockaddr * AcquireSockAddr() const
-    {
-        return get_sockaddr_in(ip_.c_str(), port_);
-        //struct sockaddr * dst_addr = get_sockaddr_in(ip_.c_str(), port_);
-        //char tmp_buf[100] = {0};
-        //uint16_t tmp_port = 0;
-        //get_addr_string(dst_addr_, tmp_buf, 100, tmp_port);
-        //LOG_INFO("1=== request %s %hu %p\n", tmp_buf, tmp_port, dst_addr_);
-    }
-};
 
 inline time_t current_time_ms()
 {
@@ -93,20 +49,17 @@ void ProxyScanner::__save_offset_file()
     offset_save_time_ = current_time_ms();
 }
 
-ProxyScanner::ProxyScanner(Fetcher::Params fetch_params, 
-    const char* offset_file,  time_t offset_save_sec, 
+ProxyScanner::ProxyScanner(ProxySet * proxy_set,
+    Fetcher::Params fetch_params, 
     const char* eth_name):
-    offset_file_(NULL), 
-    offset_save_interval_(offset_save_sec*1000),
     offset_save_time_(0), port_idx_(0), 
     local_addr_(NULL), validate_time_(0),
     validate_interval_(DEFAULT_VALIDATE_INTERVAL_SEC*1000),
     scan_time_(0), 
     scan_interval_(DEFAULT_SCAN_INTERVAL_SEC*1000),
+    proxy_set_(proxy_set),
     stopped_(false)
 {
-    if(offset_file)
-        offset_file_ = strdup(offset_file);
     low_range_[0] = low_range_[1] = 0;
     low_range_[2] = low_range_[3] = 0;
     high_range_[0] = high_range_[1] = 255;
@@ -115,7 +68,6 @@ ProxyScanner::ProxyScanner(Fetcher::Params fetch_params,
     uint16_t scan_ports[] = {80, 8080, 3128, 8118, 808};
     scan_port_.assign(scan_ports, scan_ports + sizeof(scan_ports)/sizeof(*scan_ports));
     memcpy(&params_, &fetch_params, sizeof(fetch_params));
-    assert(offset_file);
     SetHttpTryUrl("http://www.baidu.com/img/baidu_jgylogo3.gif", 705);
     SetHttpsTryUrl("https://www.baidu.com/img/baidu_jgylogo3.gif", 705);
     fetcher_.reset(new ThreadingFetcher(this));
@@ -131,7 +83,6 @@ ProxyScanner::ProxyScanner(Fetcher::Params fetch_params,
         assert(getifaddr(AF_INET, 0, eth_name, p_addr) == 0);
         ((struct sockaddr_in*)local_addr_)->sin_family = AF_INET; 
     }
-    update_itr_ = proxy_set_.end();
 }
 
 void ProxyScanner::SetHttpTryUrl(std::string try_url, size_t page_size)
@@ -198,12 +149,8 @@ void ProxyScanner::GetScanProxyRequest(
         offset_[3] == low_range_[3] &&
         port_idx_ == 0)
     {
-        time_t remain = __remain_time(scan_time_, cur_time, scan_interval_);
-        if(remain > 0)
-        {
-            //LOG_INFO("remain %zd\n", remain);
+        if(scan_time_ + scan_interval_ > cur_time)
             return;
-        }
         LOG_INFO("####### Start scan from %d.%d.%d.%d (%d.%d.%d.%d - %d.%d.%d.%d) ########\n",
             offset_[0], offset_[1], offset_[2], offset_[3],
             low_range_[0], low_range_[1], low_range_[2], low_range_[3],
@@ -270,51 +217,22 @@ void ProxyScanner::GetScanProxyRequest(
     }
 }
 
-/*
-bool ProxyScanner::GetValidateProxyRequest(Connection* & connection, 
-    void* & contex)
-{
-    time_t cur_time = current_time_ms();
-    if(update_itr_ == proxy_set_.end())
-    {
-        if(__remain_time(validate_time_, cur_time, validate_interval_))
-            return false;
-    }
-    update_itr_ = proxy_set_.begin();
-    validate_time_ = cur_time;
-    LOG_INFO("####### Start Validate ########\n");
-    for(update_itr_ = proxy_set_.begin(); update_itr_ != proxy_set_.end(); ++update_itr_)
-    {
-        if((*update_itr_)->request_time_ + validate_interval_ <= cur_time)
-        {
-            (*update_itr_)->state_ = Proxy::SCAN_HTTP;
-            ++((*update_itr_)->request_cnt_);
-            RawFetcherResult(); 
-            PutRequest(*it);
-        }
-    }
-    LOG_INFO("####### End Validate ########\n");
-    return __remain_time(validate_time_, current_time_ms(), validate_interval_);
-}
-*/
-
 void ProxyScanner::HandleProxyDelete(Proxy * proxy)
 {
     if(proxy->request_cnt_ > 1)
     {
-        proxy_set_.erase(proxy); 
+        proxy_set_->erase(*proxy);
+        return; 
     }
     delete proxy;
 }
 
 void ProxyScanner::HandleProxyUpdate(Proxy* proxy)
 {
-    LOG_INFO("===== %s %u %u %u\n", proxy->ip_.c_str(), proxy->port_,
+    LOG_INFO("===== %s %u %u %u\n", proxy->ip_, proxy->port_,
         proxy->http_enable_, proxy->https_enable_);
-    if(proxy->request_cnt_ == 1)
-    {
-        proxy_set_.insert(proxy); 
-    }
+    proxy_set_->insert(*proxy);
+    delete proxy; 
 }
 
 void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
@@ -328,9 +246,7 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
     if(rand() % 1000 == 0)
     {
         LOG_INFO("errno: %s %s %hu\n", strerror(fetch_result.err_num), 
-            proxy->ip_.c_str(), proxy->port_);
-        //if(__remain_time(offset_save_time_, current_time_ms(), offset_save_interval_))
-        //    __save_offset_file();
+            proxy->ip_, proxy->port_);
     }
 
     //if(fetch_result.err_num == 0)
@@ -403,33 +319,35 @@ void ProxyScanner::SetValidateIntervalSeconds(time_t validate_interval_sec)
 void ProxyScanner::RequestGenerator(
     int n, std::vector<RawFetcherRequest>& req_vec)
 {
-    while(!req_queue_.empty() && (unsigned)n > req_vec.size())
+    time_t cur_time = current_time_ms();
+    while(!req_queue_.empty() && n > 0)
     {
         RawFetcherRequest req = req_queue_.front();
         req_queue_.pop();
         req_vec.push_back(req);
+        --n;
     }
-    if((unsigned)n > req_vec.size())
-        GetScanProxyRequest((unsigned)n - req_vec.size(), req_vec);
+
+    if(validate_time_ + validate_interval_ <= cur_time && n > 0)
+    {
+        ProxySet::HashKey idx = 0;
+        for(int i = 0; i < n; i++)
+        {
+            Proxy * proxy = proxy_set_->get_next(idx);
+            if(!proxy)
+                break;
+            req_vec.push_back(CreateFetcherRequest(proxy));
+        }
+        validate_time_ = cur_time;
+    }
+
+    if(n > 0)
+        GetScanProxyRequest(n, req_vec);
 }
 
 void ProxyScanner::Start()
 {
     fetcher_->Begin(params_);
-    /*
-    while(!stopped_)    
-    {
-        unsigned quota = fetcher_->AvailableQuota();
-        for(int i = 0; i < quota; i++)
-        {
-            Connection * conn = 
-            void* contex = NULL;
-        }
-        ScanProxy();
-        ValidateProxy();
-        sleep(1);
-    }
-    */
 }
 
 struct RequestData* ProxyScanner::CreateRequestData(void * contex)

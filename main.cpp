@@ -10,6 +10,7 @@
 #include "httpserver/httpserver.h"
 #include "lock/lock.hpp"
 
+/* 全局变量 */
 static const int MAX_PROCESS_CNT = 256;
 static bool g_stop = false;
 static unsigned g_proc_num = 0;
@@ -28,6 +29,28 @@ struct ProcessInfo
         memset(high_range_, 0, sizeof(high_range_));
     }
 } g_proc_info[MAX_PROCESS_CNT];
+static ProxySet * g_proxy_set = NULL;
+/* end */
+
+class ProxyService: public HttpServer
+{
+    virtual void handle_recv_request(boost::shared_ptr<http::server4::request> http_req, 
+            boost::shared_ptr<HttpSession> session)
+    {  
+        Json::Value json_lst;
+        ProxySet::HashKey idx = 0;
+        Proxy* proxy = NULL; 
+        while((proxy = g_proxy_set->get_next(idx)) != NULL)
+        {
+            Json::Value cur_json = proxy->ToJson();
+            json_lst.append(cur_json);
+        }
+        std::string response_content = json_lst.toStyledString();
+        session->m_reply->status = http::server4::reply::ok;
+        session->m_reply->content= response_content;
+        session->send_response();
+    }
+};
 
 static void SetupSignalHandler(bool is_worker);
 
@@ -42,9 +65,10 @@ static void WorkerRuntine(unsigned int low_range[4], unsigned int high_range[4])
     fetch_params.max_connecting_cnt  = g_cfg->max_connect_count_;
     fetch_params.socket_rcvbuf_size  = 8096;
     fetch_params.socket_sndbuf_size  = 8096;
-    ProxyScanner proxy_scanner(fetch_params, "offset.dat");
+    ProxyScanner proxy_scanner(g_proxy_set, fetch_params);
     proxy_scanner.SetScanRange(low_range, high_range);
-    proxy_scanner.SetScanIntervalSeconds(1000);
+    proxy_scanner.SetScanIntervalSeconds(g_cfg->scan_interval_sec_ * 1000);
+    proxy_scanner.SetScanPort(g_cfg->port_vec_);
     proxy_scanner.Start();
 
     LOG_INFO("Worker process %d (%d.%d.%d.%d - %d.%d.%d.%d) start.\n", getpid(), 
@@ -188,12 +212,14 @@ int main(int argc, char* argv[])
         config_file = argv[1];
     g_cfg = new Config(config_file.c_str());
     g_cfg->ReadConfig();
+    ShareMem shm(g_cfg->shm_key_, g_cfg->shm_size_);
+    g_proxy_set = new ProxySet(shm, g_cfg->max_proxy_num_);
 
     LOG_INFO("Master process starting ...\n");
     SpawnWorkerProcess();
     SetupSignalHandler(false);
     //set up httpserver
-    boost::shared_ptr<HttpServer> httpserver(new HttpServer());
+    boost::shared_ptr<ProxyService> httpserver(new ProxyService());
     httpserver->initialize(g_cfg->bind_ip_, g_cfg->listen_port_);
     httpserver->run();
 
@@ -217,6 +243,7 @@ int main(int argc, char* argv[])
             waitpid(g_proc_info[i].pid_, &status, 0);
         }
     }
+    delete g_proxy_set;
 
     return 0;
 }

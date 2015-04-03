@@ -1,18 +1,22 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <Root>
-    	<EthName>eth0</EthName>
+	<EthName>eth0</EthName>
 	<ListenPort>9090</ListenPort>
-	<WorkProcessCount>4</WorkProcessCount>
-	<MaxConnectCount>10</MaxConnectCount>
+	<WorkProcessCount>1</WorkProcessCount>
+	<MaxConnectCount>104857</MaxConnectCount>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
 	<ScanOffsetFilePrefix>offset_</ScanOffsetFilePrefix>
 	<ScanLowRange>1.0.0.0</ScanLowRange>
 	<ScanHighRange>255.255.255.255</ScanHighRange>
 	<ScanIntervalSec>3600</ScanIntervalSec>
+	<ScanPort>80:8080:3128:8118:808</ScanPort>
 	<TryHttpUrl size = "705">
 	    http://www.baidu.com/img/baidu_jgylogo3.gif
 	</TryHttpUrl>
 	<TryHttpsUrl size = "705">
 	    https://www.baidu.com/img/baidu_jgylogo3.gif
 	</TryHttpsUrl>
+	<ShmKey>12345</ShmKey>
+	<ShmSize>20485760</ShmSize>
+	<MaxProxyNum>200000</MaxProxyNum>
 </Root>
