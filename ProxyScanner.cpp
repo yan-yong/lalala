@@ -7,7 +7,7 @@
 #include "httpparser/HttpFetchProtocal.hpp"
 #include "log/log.h"
 
-inline time_t current_time_ms()
+time_t current_time_ms()
 {
     timeval tv; 
     gettimeofday(&tv, NULL);
@@ -57,8 +57,8 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     validate_interval_(DEFAULT_VALIDATE_INTERVAL_SEC*1000),
     scan_time_(0), 
     scan_interval_(DEFAULT_SCAN_INTERVAL_SEC*1000),
-    proxy_set_(proxy_set),
-    stopped_(false)
+    proxy_set_(proxy_set), stopped_(false),
+    error_retry_num_(0), validate_idx_(0)
 {
     low_range_[0] = low_range_[1] = 0;
     low_range_[2] = low_range_[3] = 0;
@@ -111,6 +111,11 @@ void ProxyScanner::SetHttpsTryUrl(std::string try_url, size_t page_size)
 void ProxyScanner::SetScanPort(const std::vector<uint16_t>& scan_port)
 {
     scan_port_ = scan_port;
+}
+
+void ProxyScanner::SetScanOffset(unsigned offset[4])
+{
+    memcpy(offset_, offset, sizeof(offset_));
 }
 
 RawFetcherRequest ProxyScanner::CreateFetcherRequest(Proxy* proxy)
@@ -247,13 +252,14 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
     {
         if(fetch_result.err_num == 0 && resp->Body.size() == try_http_size_)
         {
+            proxy->err_num_ = 0;
             proxy->state_ = Proxy::SCAN_HTTPS;
             proxy->http_enable_ = 1;
             req_queue_.push(CreateFetcherRequest(proxy));
         }
         else
         {
-            if(proxy->request_cnt_ > 1)
+            if(proxy->request_cnt_ > 1 && ++(proxy->err_num_) > error_retry_num_)
                 proxy_set_->erase(*proxy);
             delete proxy;
         }
@@ -296,6 +302,11 @@ void ProxyScanner::SetScanIntervalSeconds(time_t scan_interval_sec)
     scan_interval_ = scan_interval_sec * 1000; 
 }
 
+void ProxyScanner::SetErrorRetryNum(unsigned error_retry_num)
+{
+    error_retry_num_ = error_retry_num;
+}
+
 void ProxyScanner::SetValidateIntervalSeconds(time_t validate_interval_sec)
 {
     validate_interval_ = validate_interval_sec * 1000; 
@@ -315,20 +326,24 @@ void ProxyScanner::RequestGenerator(
 
     if(validate_time_ + validate_interval_ <= cur_time && n > 0)
     {
-        ProxySet::HashKey idx = 0;
+        if(validate_idx_ == 0)
+            LOG_INFO("validate begin.\n");
         for(int i = 0; i < n; i++)
         {
             Proxy * proxy = new Proxy();
-            if(!proxy_set_->get_next(idx, *proxy))
+            // 验证结束
+            if(!proxy_set_->get_next(validate_idx_, *proxy))
             {
                 delete proxy;
+                validate_time_ = cur_time;
+                validate_idx_  = 0;
+                LOG_INFO("validate end.\n");
                 break;
             }
             proxy->state_ = Proxy::SCAN_HTTP;
             ++proxy->request_cnt_; 
             req_vec.push_back(CreateFetcherRequest(proxy));
         }
-        validate_time_ = cur_time;
     }
 
     if(n > 0)
@@ -338,6 +353,11 @@ void ProxyScanner::RequestGenerator(
 void ProxyScanner::Start()
 {
     fetcher_->Begin(params_);
+}
+
+void ProxyScanner::GetScanOffset(unsigned offset[4]) const
+{
+    memcpy(offset, offset_, sizeof(offset_));
 }
 
 struct RequestData* ProxyScanner::CreateRequestData(void * contex)

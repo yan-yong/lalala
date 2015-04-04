@@ -28,26 +28,24 @@ struct Proxy
     } state_;
     char ip_[16];
     uint16_t port_;
+    unsigned err_num_;
     unsigned request_cnt_;
     time_t request_time_;
     unsigned char http_enable_ :1;
     unsigned char https_enable_:1;
     unsigned char is_foreign   :1;
     char fill_buf_[PROXY_SIZE - sizeof(state_) - 
-        sizeof(ip_) - sizeof(port_) - 
+        sizeof(ip_) - sizeof(port_) - sizeof(err_num_) - 
         sizeof(request_cnt_) - sizeof(request_time_) - 1];
 
     Proxy()
     {
+        memset(this, 0, sizeof(Proxy));
     }
 
-    Proxy(std::string ip, uint16_t port):
-        state_(SCAN_IDLE), port_(port), 
-        request_cnt_(0),  request_time_(0), 
-        http_enable_(0), 
-        https_enable_(0), is_foreign(0)
+    Proxy(std::string ip, uint16_t port)
     {
-        memset(ip_, 0, sizeof(ip_));
+        memset(this, 0, sizeof(Proxy));
         strcpy(ip_, ip.c_str());
         port_ = port;
     }
@@ -66,9 +64,10 @@ struct Proxy
         json_val["addr"] = ToString();
         if(https_enable_)
             json_val["https"] = "1";
-        char cnt_str[10];
-        snprintf(cnt_str, 10, "%u", request_cnt_);
-        json_val["avail"] = cnt_str;
+        char available_cnt_str[10];
+        snprintf(available_cnt_str, 10, "%u", 
+            request_cnt_ - err_num_);
+        json_val["avail"] = available_cnt_str;
         return json_val;
     }
     bool operator < (const Proxy& other) const
@@ -124,8 +123,11 @@ public:
     void SetHttpsTryUrl(std::string try_url, size_t page_size);
     void SetScanPort(const std::vector<uint16_t>& scan_port);
     void SetScanRange(unsigned low_range[4], unsigned high_range[4]); 
+    void SetScanOffset(unsigned offset[4]);
+    void GetScanOffset(unsigned offset[4]) const;
     void SetValidateIntervalSeconds(time_t validate_interval_sec);
     void SetScanIntervalSeconds(time_t scan_interval_sec);
+    void SetErrorRetryNum(unsigned proxy_error_num);
     void Stop();
     void RequestGenerator(int n, std::vector<RawFetcherRequest>& req_vec);
     void Start();
@@ -154,6 +156,10 @@ protected:
     ProxySet *proxy_set_;
     bool stopped_;
     std::queue<RawFetcherRequest> req_queue_;
+    unsigned error_retry_num_;
+    ProxySet::HashKey validate_idx_;
 };
+
+inline time_t current_time_ms();
 
 #endif 

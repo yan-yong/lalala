@@ -9,6 +9,8 @@
 	<ScanLowRange>1.0.0.0</ScanLowRange>
 	<ScanHighRange>255.255.255.255</ScanHighRange>
 	<ScanIntervalSec>3600</ScanIntervalSec>
+    <ValidateIntervalSec>600</ValidateIntervalSec>
+    <ProxyErrorRetryNum>3</ProxyMaxErrorRetryNum>
 	<ScanPort>80:8080:3128:8118:808</ScanPort>
 	<TryHttpUrl size = "705">
 	    http://www.baidu.com/img/baidu_jgylogo3.gif
@@ -19,4 +21,6 @@
 	<ShmKey>12345</ShmKey>
 	<ShmSize>20485760</ShmSize>
 	<MaxProxyNum>200000</MaxProxyNum>
+    <ShmDumpFile>shm.dump</ShmDumpFile>
+    <ShmDumpIntervalSec>600</ShmDumpIntervalSec>
 </Root>

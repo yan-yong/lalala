@@ -10,29 +10,25 @@
 #include "httpserver/httpserver.h"
 #include "lock/lock.hpp"
 
-/* 全局变量 */
-static const int MAX_PROCESS_CNT = 256;
-static bool g_stop = false;
-static unsigned g_proc_num = 0;
-static Config*  g_cfg = NULL;
-static SpinLock g_spin_lock;
+/* 保存进程运行信息 */
 struct ProcessInfo
 {
     int pid_;
     unsigned low_range_[4];
     unsigned high_range_[4];
+    unsigned offset_[4];
+};
 
-    ProcessInfo()
-    {
-        pid_ = 0;
-        memset(low_range_, 0, sizeof(low_range_));
-        memset(high_range_, 0, sizeof(high_range_));
-    }
-} g_proc_info[MAX_PROCESS_CNT];
+/* 全局变量 */
+static const int MAX_PROCESS_CNT = 256;
+static bool g_stop = false;
+static unsigned g_proc_num = 0;
+static Config*  g_cfg = NULL;
+static ProcessInfo* g_proc_info = NULL;
+static ProxySet *   g_proxy_set = NULL;
+static ShareMem *   g_shm       = NULL;   
 
-static ProxySet * g_proxy_set = NULL;
-/* end */
-
+/* 提供http接口服务 */
 class ProxyService: public HttpServer
 {
     virtual void handle_recv_request(boost::shared_ptr<http::server4::request> http_req, 
@@ -56,7 +52,7 @@ class ProxyService: public HttpServer
 
 static void SetupSignalHandler(bool is_worker);
 
-static void WorkerRuntine(unsigned int low_range[4], unsigned int high_range[4])
+static void WorkerRuntine(ProcessInfo* proc_info)
 {
     for(int i = 3; i < sysconf(_SC_OPEN_MAX); i++)
         close(i);
@@ -68,21 +64,43 @@ static void WorkerRuntine(unsigned int low_range[4], unsigned int high_range[4])
     fetch_params.socket_rcvbuf_size  = 8096;
     fetch_params.socket_sndbuf_size  = 8096;
     ProxyScanner proxy_scanner(g_proxy_set, fetch_params);
-    proxy_scanner.SetScanRange(low_range, high_range);
-    proxy_scanner.SetScanIntervalSeconds(g_cfg->scan_interval_sec_ * 1000);
+    proxy_scanner.SetScanOffset(proc_info->offset_);
+    proxy_scanner.SetScanRange(proc_info->low_range_, proc_info->high_range_);
+    proxy_scanner.SetScanIntervalSeconds(g_cfg->scan_interval_sec_);
+    proxy_scanner.SetValidateIntervalSeconds(g_cfg->validate_interval_sec_);
+    proxy_scanner.SetErrorRetryNum(g_cfg->proxy_error_retry_num_);
     proxy_scanner.SetScanPort(g_cfg->port_vec_);
     proxy_scanner.Start();
 
-    LOG_INFO("Worker process %d (%d.%d.%d.%d - %d.%d.%d.%d) start.\n", getpid(), 
-        low_range[0], low_range[1], low_range[2], low_range[3],
-        high_range[0], high_range[1], high_range[2], high_range[3]);
+    char proc_id_str[100];
+    snprintf(proc_id_str, 100, "%d (%d.%d.%d.%d - %d.%d.%d.%d)", getpid(),
+        proc_info->low_range_[0], proc_info->low_range_[1], proc_info->low_range_[2], proc_info->low_range_[3],
+        proc_info->high_range_[0],proc_info->high_range_[1],proc_info->high_range_[2],proc_info->high_range_[3]);
+    LOG_INFO("Worker process %s start.\n", proc_id_str);
+
+    time_t last_dump_time = current_time_ms();
     while(!g_stop)
+    {
         sleep(1);
-    LOG_INFO("Worker process %d (%d.%d.%d.%d - %d.%d.%d.%d) stopping ...\n", getpid(), 
-        low_range[0], low_range[1], low_range[2], low_range[3],
-        high_range[0], high_range[1], high_range[2], high_range[3]);
+        time_t cur_time = current_time_ms();
+        //第一个进程进行同步
+        if(proc_info == g_proc_info && 
+            cur_time - last_dump_time > g_cfg->dump_interval_seconds_ * 1000)
+        {
+            
+            last_dump_time = cur_time;
+            if(g_shm->sync() < 0)
+                LOG_ERROR("Share memory sync failed.\n");
+            else
+                LOG_INFO("Share memory sync success.\n");
+        }
+    }
+
+    //记录offset
+    proxy_scanner.GetScanOffset(proc_info->offset_);
+    LOG_INFO("Worker process %s stopping ...\n", proc_id_str);
     proxy_scanner.Stop();
-    LOG_INFO("Worker process %d end.\n", getpid());
+    LOG_INFO("Worker process %s end.\n", proc_id_str);
     exit(0);
 }
 
@@ -123,9 +141,7 @@ static void SpawnWorkerProcess()
         }
         pid_t child_pid = fork();
         if(child_pid == 0)
-        {
-            WorkerRuntine(g_proc_info[i].low_range_, g_proc_info[i].high_range_);
-        }
+            WorkerRuntine(g_proc_info + i);
         g_proc_info[i].pid_ = child_pid;
         ++g_proc_num;
     }
@@ -135,7 +151,6 @@ static void SigChildHandler(int sig)
 {
     while(1) 
     {
-        SpinGuard guard(g_spin_lock);
         pid_t pid = 0;
         /* seems to be the bug of glibc */
         errno = 0;
@@ -207,6 +222,7 @@ static void SetupSignalHandler(bool is_worker)
 
 int main(int argc, char* argv[])
 {
+    /* handle config */
     std::string config_file = "config.xml";
     if(argc == 1)
         LOG_INFO("Use default config file %s\n", config_file.c_str());
@@ -214,17 +230,25 @@ int main(int argc, char* argv[])
         config_file = argv[1];
     g_cfg = new Config(config_file.c_str());
     g_cfg->ReadConfig();
-    ShareMem shm(g_cfg->shm_key_, g_cfg->shm_size_);
-    g_proxy_set = new ProxySet(shm, g_cfg->max_proxy_num_);
 
+    /* initialize */
+    g_shm = new ShareMem(g_cfg->shm_key_, g_cfg->shm_size_, g_cfg->dump_file_name_);
+    g_proxy_set = new ProxySet(*g_shm, g_cfg->max_proxy_num_);
+    g_proc_info = g_shm->New<ProcessInfo>(MAX_PROCESS_CNT);
+    for(int i = 0; i < MAX_PROCESS_CNT; i++)
+        g_proc_info[i].pid_ = 0; 
+
+    /* spwan worker processes */
     LOG_INFO("Master process starting ...\n");
     SpawnWorkerProcess();
     SetupSignalHandler(false);
-    //set up httpserver
+
+    /* set up httpserver */
     boost::shared_ptr<ProxyService> httpserver(new ProxyService());
     httpserver->initialize(g_cfg->bind_ip_, g_cfg->listen_port_);
     httpserver->run();
 
+    /* handle stop */
     LOG_INFO("Master process stopping ...\n");
     g_stop = true;
     //kill child process
@@ -235,8 +259,7 @@ int main(int argc, char* argv[])
         if(kill(g_proc_info[i].pid_, SIGUSR1) < 0)
             LOG_ERROR("kill %d error: %s\n", g_proc_info[i].pid_, strerror(errno));
         LOG_INFO("Master process killing worker process %d ...\n", g_proc_info[i].pid_);
-    }
-    
+    } 
     for(unsigned i = 0; i < g_proc_num; i++)
     {
         if(g_proc_info[i].pid_)
@@ -245,7 +268,9 @@ int main(int argc, char* argv[])
             waitpid(g_proc_info[i].pid_, &status, 0);
         }
     }
+    g_shm->sync();
     delete g_proxy_set;
+    delete g_shm;
 
     return 0;
 }

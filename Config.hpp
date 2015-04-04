@@ -28,6 +28,10 @@ struct Config
     int shm_key_;
     unsigned shm_size_;
     unsigned max_proxy_num_;
+    unsigned validate_interval_sec_;
+    unsigned proxy_error_retry_num_;
+    char*    dump_file_name_;
+    unsigned dump_interval_seconds_;
 
     std::vector<uint16_t> port_vec_;
 
@@ -68,6 +72,11 @@ public:
         {
             free(listen_port_);
             listen_port_ = NULL;
+        }
+        if(dump_file_name_)
+        {
+            free(dump_file_name_);
+            dump_file_name_ = NULL;
         }
     }
 
@@ -131,7 +140,12 @@ public:
         shm_key_ = pt.get<int>("Root.ShmKey"); 
         shm_size_= pt.get<unsigned>("Root.ShmSize");        
         max_proxy_num_ = pt.get<unsigned>("Root.MaxProxyNum");
+        std::string dump_file = pt.get<std::string>("Root.ShmDumpFile");
+        dump_file_name_ = strdup(dump_file.c_str());
+        dump_interval_seconds_ = pt.get<unsigned>("Root.ShmDumpIntervalSec");
 
+        validate_interval_sec_ = pt.get<unsigned>("Root.ValidateIntervalSec");
+        proxy_error_retry_num_ = pt.get<unsigned>("Root.ProxyErrorRetryNum");
         return 0;
     }
 };
