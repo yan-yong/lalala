@@ -30,7 +30,6 @@ struct Proxy
     uint16_t port_;
     unsigned request_cnt_;
     time_t request_time_;
-    unsigned char data_changed_:1;
     unsigned char http_enable_ :1;
     unsigned char https_enable_:1;
     unsigned char is_foreign   :1;
@@ -45,7 +44,7 @@ struct Proxy
     Proxy(std::string ip, uint16_t port):
         state_(SCAN_IDLE), port_(port), 
         request_cnt_(0),  request_time_(0), 
-        data_changed_(0), http_enable_(0), 
+        http_enable_(0), 
         https_enable_(0), is_foreign(0)
     {
         memset(ip_, 0, sizeof(ip_));
@@ -72,10 +71,10 @@ struct Proxy
         json_val["avail"] = cnt_str;
         return json_val;
     }
-    bool operator == (const Proxy& other)
+    bool operator < (const Proxy& other) const
     {
-        return strncmp(ip_, other.ip_, 16) == 0 
-            && port_ != other.port_;
+        int ret = strncmp(ip_, other.ip_, 16);
+        return ret < 0 || (ret == 0 && port_ < other.port_);
     }
     struct sockaddr * AcquireSockAddr() const
     {
@@ -112,8 +111,6 @@ protected:
     virtual void FreeFetchMessage(IFetchMessage *);
 
     virtual void GetScanProxyRequest(int, std::vector<RawFetcherRequest>&);
-    //virtual bool GetValidateProxyRequest(Connection* &, void* &);
-    virtual void HandleProxyDelete(Proxy * proxy);
     virtual void HandleProxyUpdate(Proxy* proxy);
     virtual void ProcessResult(const RawFetcherResult&);
     RawFetcherRequest CreateFetcherRequest(Proxy* proxy);

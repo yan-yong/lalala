@@ -65,6 +65,7 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     high_range_[0] = high_range_[1] = 255;
     high_range_[2] = high_range_[3] = 255;
     //__load_offset_file();
+    memset(offset_, 0, sizeof(offset_));
     uint16_t scan_ports[] = {80, 8080, 3128, 8118, 808};
     scan_port_.assign(scan_ports, scan_ports + sizeof(scan_ports)/sizeof(*scan_ports));
     memcpy(&params_, &fetch_params, sizeof(fetch_params));
@@ -217,19 +218,11 @@ void ProxyScanner::GetScanProxyRequest(
     }
 }
 
-void ProxyScanner::HandleProxyDelete(Proxy * proxy)
-{
-    if(proxy->request_cnt_ > 1)
-        proxy_set_->erase(*proxy);
-    delete proxy;
-}
-
 void ProxyScanner::HandleProxyUpdate(Proxy* proxy)
 {
     LOG_INFO("===== %s %u %u %u\n", proxy->ip_, proxy->port_,
         proxy->http_enable_, proxy->https_enable_);
-    proxy_set_->insert(*proxy);
-    delete proxy; 
+    proxy_set_->update(*proxy);
 }
 
 void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
@@ -249,34 +242,29 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
     //if(fetch_result.err_num == 0)
     //    LOG_INFO("##### %s %u %zd\n", proxy->ip_.c_str(), proxy->port_,  resp->Body.size());
 
-    //http result
+    //** http result **//
     if(proxy->state_ == Proxy::SCAN_HTTP)
     {
-        proxy->data_changed_ = 0;
         if(fetch_result.err_num == 0 && resp->Body.size() == try_http_size_)
         {
-            if(!proxy->http_enable_)
-                proxy->data_changed_ = 1;
-            proxy->http_enable_ = 1;
             proxy->state_ = Proxy::SCAN_HTTPS;
+            proxy->http_enable_ = 1;
             req_queue_.push(CreateFetcherRequest(proxy));
         }
         else
-            HandleProxyDelete(proxy);
+        {
+            if(proxy->request_cnt_ > 1)
+                proxy_set_->erase(*proxy);
+            delete proxy;
+        }
     }
     else if(proxy->state_ == Proxy::SCAN_HTTPS)
     {
-        if(fetch_result.err_num == 0 && resp->Body.size() == try_https_size_)
-        {
-            proxy->https_enable_ = 1;
-        }
         proxy->state_ = Proxy::SCAN_IDLE;
-        if(!proxy->http_enable_ && !proxy->https_enable_)
-        {
-            HandleProxyDelete(proxy);
-            return;
-        }
+        if(fetch_result.err_num == 0 && resp->Body.size() == try_https_size_)
+            proxy->https_enable_ = 1;
         HandleProxyUpdate(proxy);
+        delete proxy; 
     }
     delete resp;
 }
