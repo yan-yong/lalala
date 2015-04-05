@@ -25,6 +25,7 @@ struct Proxy
         SCAN_IDLE,
         SCAN_HTTP,
         SCAN_HTTPS,
+        SCAN_JUDGE
     } state_;
     char ip_[16];
     uint16_t port_;
@@ -34,7 +35,16 @@ struct Proxy
     unsigned char http_enable_ :1;
     unsigned char https_enable_:1;
     unsigned char is_foreign   :1;
-    char fill_buf_[PROXY_SIZE - sizeof(state_) - 
+    //代理类型
+    enum Type
+    {
+        TYPE_UNKNOWN,
+        TRANSPORT,
+        ANONYMOUS,
+        HIGH_ANONYMOUS
+    } type_;
+
+    char fill_buf_[PROXY_SIZE - sizeof(state_) - sizeof(type_) -
         sizeof(ip_) - sizeof(port_) - sizeof(err_num_) - 
         sizeof(request_cnt_) - sizeof(request_time_) - 1];
 
@@ -64,6 +74,8 @@ struct Proxy
         json_val["addr"] = ToString();
         if(https_enable_)
             json_val["https"] = "1";
+        if(type_)
+            json_val["type"]  = type_;
         char available_cnt_str[10];
         snprintf(available_cnt_str, 10, "%u", 
             request_cnt_ - err_num_);
@@ -110,7 +122,7 @@ protected:
     virtual void FreeFetchMessage(IFetchMessage *);
 
     virtual void GetScanProxyRequest(int, std::vector<RawFetcherRequest>&);
-    virtual void HandleProxyUpdate(Proxy* proxy);
+    virtual void FinishProxy(Proxy* proxy);
     virtual void ProcessResult(const RawFetcherResult&);
     RawFetcherRequest CreateFetcherRequest(Proxy* proxy);
  
@@ -118,7 +130,7 @@ public:
     ProxyScanner(ProxySet * proxy_set,
         Fetcher::Params fetch_params,
         const char* eth_name = NULL);
-    virtual ~ProxyScanner(){}
+    ~ProxyScanner();
     void SetHttpTryUrl(std::string try_url, size_t page_size);
     void SetHttpsTryUrl(std::string try_url, size_t page_size);
     void SetScanPort(const std::vector<uint16_t>& scan_port);
@@ -128,13 +140,13 @@ public:
     void SetValidateIntervalSeconds(time_t validate_interval_sec);
     void SetScanIntervalSeconds(time_t scan_interval_sec);
     void SetErrorRetryNum(unsigned proxy_error_num);
+    void SetProxyJudyUrl(std::string url);
     void Stop();
     void RequestGenerator(int n, std::vector<RawFetcherRequest>& req_vec);
     void Start();
 
 protected:
     Fetcher::Params params_;
-    const char* offset_file_;
     time_t offset_save_interval_;
     time_t offset_save_time_;
     Fetcher::Params fetcher_params_;
@@ -142,6 +154,7 @@ protected:
     size_t  try_http_size_;
     URI*    try_https_uri_;
     size_t  try_https_size_;
+    URI*    proxy_judy_uri_;
     boost::shared_ptr<ThreadingFetcher> fetcher_;
     std::vector<uint16_t> scan_port_;
     unsigned offset_[4];

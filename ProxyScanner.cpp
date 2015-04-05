@@ -21,38 +21,13 @@ time_t ProxyScanner::__remain_time(time_t last_time, time_t cur_time, time_t int
     return 0;
 }
 
-void ProxyScanner::__load_offset_file()
-{
-    if(!offset_file_)
-        return;
-    FILE *fid = fopen(offset_file_, "r");
-    int ret = 0;
-    if(fid)
-    {
-        ret = fscanf(fid, "%d %d %d %d", offset_, offset_ + 1,
-            offset_ + 2, offset_ + 3);
-        fclose(fid);
-    }
-    if(ret != 4)
-        memcpy(offset_, low_range_, sizeof(low_range_));
-}
-
-void ProxyScanner::__save_offset_file()
-{
-    if(!offset_file_)
-        return;
-    FILE *fid = fopen(offset_file_, "w");
-    assert(fid);
-    fprintf(fid, "%d %d %d %d", offset_[0], offset_[1],
-        offset_[2], offset_[3]);
-    fclose(fid);
-    offset_save_time_ = current_time_ms();
-}
-
 ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     Fetcher::Params fetch_params, 
     const char* eth_name):
-    offset_save_time_(0), port_idx_(0), 
+    offset_save_time_(0), 
+    try_http_uri_(NULL), try_http_size_(0),
+    try_https_uri_(NULL),try_https_size_(0),
+    proxy_judy_uri_(NULL), port_idx_(0), 
     local_addr_(NULL), validate_time_(0),
     validate_interval_(DEFAULT_VALIDATE_INTERVAL_SEC*1000),
     scan_time_(0), 
@@ -65,13 +40,15 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     low_range_[2] = low_range_[3] = 0;
     high_range_[0] = high_range_[1] = 255;
     high_range_[2] = high_range_[3] = 255;
-    //__load_offset_file();
+
     memset(offset_, 0, sizeof(offset_));
     uint16_t scan_ports[] = {80, 8080, 3128, 8118, 808};
     scan_port_.assign(scan_ports, scan_ports + sizeof(scan_ports)/sizeof(*scan_ports));
     memcpy(&params_, &fetch_params, sizeof(fetch_params));
     SetHttpTryUrl("http://www.baidu.com/img/baidu_jgylogo3.gif", 705);
     SetHttpsTryUrl("https://www.baidu.com/img/baidu_jgylogo3.gif", 705);
+    proxy_judy_uri_ = NULL;        
+
     fetcher_.reset(new ThreadingFetcher(this));
     fetcher_->SetResultCallback(boost::bind(&ProxyScanner::ProcessResult, this, _1));
     ThreadingFetcher::RequestGenerator req_generator =
@@ -87,8 +64,21 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     }
 }
 
+ProxyScanner::~ProxyScanner()
+{
+    if(try_http_uri_)
+        delete try_http_uri_;
+    if(try_https_uri_)
+        delete try_https_uri_;
+}
+
 void ProxyScanner::SetHttpTryUrl(std::string try_url, size_t page_size)
 {
+    if(try_http_uri_)
+    {
+        delete try_http_uri_;
+        try_http_uri_ = NULL;
+    }
     try_http_uri_ = new URI();
     if(!UriParse(try_url.c_str(), try_url.size(), *try_http_uri_)
         || !HttpUriNormalize(*try_http_uri_))
@@ -100,6 +90,11 @@ void ProxyScanner::SetHttpTryUrl(std::string try_url, size_t page_size)
 
 void ProxyScanner::SetHttpsTryUrl(std::string try_url, size_t page_size)
 {
+    if(try_https_uri_)
+    {
+        delete try_https_uri_;
+        try_https_uri_ = NULL;
+    }
     try_https_uri_ = new URI();
     if(!UriParse(try_url.c_str(), try_url.size(), *try_https_uri_)
         || !HttpUriNormalize(*try_https_uri_))
@@ -107,6 +102,16 @@ void ProxyScanner::SetHttpsTryUrl(std::string try_url, size_t page_size)
         assert(false);
     }
     try_https_size_ = page_size;
+}
+
+void ProxyScanner::SetProxyJudyUrl(std::string judy_url)
+{
+    proxy_judy_uri_ = new URI();
+    if(!UriParse(judy_url.c_str(), judy_url.size(), *proxy_judy_uri_)
+        || !HttpUriNormalize(*proxy_judy_uri_))
+    {
+        assert(false);
+    }
 }
 
 void ProxyScanner::SetScanPort(const std::vector<uint16_t>& scan_port)
@@ -124,10 +129,30 @@ RawFetcherRequest ProxyScanner::CreateFetcherRequest(Proxy* proxy)
     assert(proxy->state_ != Proxy::SCAN_IDLE);
     proxy->request_time_ = current_time_ms();
     URI * uri = NULL;
-    if(proxy->state_ == Proxy::SCAN_HTTPS)
-        uri = try_https_uri_;
-    else
-        uri = try_http_uri_;
+    switch(proxy->state_)
+    {
+        case(Proxy::SCAN_HTTPS):
+        {
+            uri = try_https_uri_;
+            break;
+        }
+        case(Proxy::SCAN_HTTP):
+        {
+            uri = try_http_uri_;
+            ++(proxy->request_cnt_);
+            break;
+        }
+        case(Proxy::SCAN_JUDGE):
+        {
+            uri = proxy_judy_uri_; 
+            break;
+        }
+        default:
+        {
+            LOG_ERROR("invalid proxy state: %d.\n", proxy->state_);
+            assert(false);
+        }
+    }
     FetchAddress fetch_address;
     fetch_address.remote_addr = proxy->AcquireSockAddr();
     fetch_address.remote_addrlen = sizeof(sockaddr);
@@ -218,17 +243,28 @@ void ProxyScanner::GetScanProxyRequest(
                 offset_[1], offset_[2], offset_[3]);
         Proxy * proxy = new Proxy(ip_str, port);
         proxy->state_ = Proxy::SCAN_HTTP;
-        ++proxy->request_cnt_; 
         req_vec.push_back(CreateFetcherRequest(proxy));
         ++port_idx_;
     }
 }
 
-void ProxyScanner::HandleProxyUpdate(Proxy* proxy)
+void ProxyScanner::FinishProxy(Proxy* proxy)
 {
-    LOG_INFO("===== %s %u %u %u\n", proxy->ip_, proxy->port_,
-        proxy->http_enable_, proxy->https_enable_);
+    if(proxy->err_num_ > error_retry_num_)
+    {
+        LOG_INFO("erase failed proxy: %s\n", proxy->ToString().c_str());
+        proxy_set_->erase(*proxy);
+        delete proxy;
+        return;
+    }
+    proxy->state_ = Proxy::SCAN_IDLE;
+    if(proxy->request_cnt_ == 1)
+    {
+        LOG_INFO("===== %s %u %u %u =====\n", proxy->ip_, 
+            proxy->port_, proxy->http_enable_, proxy->https_enable_);
+    }
     proxy_set_->update(*proxy);
+    delete proxy;
 }
 
 void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
@@ -239,39 +275,74 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
     fetcher_->CloseConnection(fetch_result.conn);
     fetcher_->FreeConnection(fetch_result.conn);
 
-    if(rand() % 1000 == 0)
+    if(rand() % 2000 == 0)
     {
         LOG_INFO("errno: %s %s %hu\n", strerror(fetch_result.err_num), 
             proxy->ip_, proxy->port_);
     }
 
-    //if(fetch_result.err_num == 0)
-    //    LOG_INFO("##### %s %u %zd\n", proxy->ip_.c_str(), proxy->port_,  resp->Body.size());
-
     //** http result **//
-    if(proxy->state_ == Proxy::SCAN_HTTP)
+    switch(proxy->state_)
     {
-        if(fetch_result.err_num == 0 && resp->Body.size() == try_http_size_)
+        case(Proxy::SCAN_HTTP):
         {
-            proxy->err_num_ = 0;
-            proxy->state_ = Proxy::SCAN_HTTPS;
-            proxy->http_enable_ = 1;
+            if(fetch_result.err_num == 0 && resp && resp->Body.size() == try_http_size_)
+            {
+                proxy->err_num_ = 0;
+                proxy->state_ = Proxy::SCAN_HTTPS;
+                proxy->http_enable_ = 1;
+                req_queue_.push(CreateFetcherRequest(proxy));
+                if(proxy->request_cnt_ > 1)
+                    LOG_INFO("validate success: %s.\n", proxy->ToString().c_str());
+                break;
+            }
+            //first error.
+            if(proxy->request_cnt_ == 1)
+            {
+                delete proxy;
+                break;
+            }
+            ++(proxy->err_num_);
+            LOG_INFO("validate error: %s %u\n", proxy->ToString().c_str(), proxy->err_num_);
+            FinishProxy(proxy);
+            break;
+        }
+        case(Proxy::SCAN_HTTPS):
+        {
+            if(fetch_result.err_num == 0 && resp && resp->Body.size() == try_https_size_)
+                proxy->https_enable_ = 1;
+            // no need judy proxy --> end
+            if(proxy->type_ != Proxy::TYPE_UNKNOWN || !proxy_judy_uri_)
+            {
+                FinishProxy(proxy);
+                break; 
+            }
+            proxy->state_ = Proxy::SCAN_JUDGE;
             req_queue_.push(CreateFetcherRequest(proxy));
+            break;
         }
-        else
+        case(Proxy::SCAN_JUDGE):
         {
-            if(proxy->request_cnt_ > 1 && ++(proxy->err_num_) > error_retry_num_)
-                proxy_set_->erase(*proxy);
-            delete proxy;
+            // last --> end
+            const char *pat_str = "HTTP_X_FORWARDED_FOR";
+            if(fetch_result.err_num == 0 && resp)
+            {
+                resp->Body.push_back('\0');
+                if(strstr(&(resp->Body[0]), pat_str))
+                    proxy->type_ = Proxy::TRANSPORT;
+                else
+                    proxy->type_ = Proxy::HIGH_ANONYMOUS;
+            }
+            else
+                LOG_ERROR("request proxy judy url error: %s\n", proxy->ToString().c_str());
+            FinishProxy(proxy);
+            break;
         }
-    }
-    else if(proxy->state_ == Proxy::SCAN_HTTPS)
-    {
-        proxy->state_ = Proxy::SCAN_IDLE;
-        if(fetch_result.err_num == 0 && resp->Body.size() == try_https_size_)
-            proxy->https_enable_ = 1;
-        HandleProxyUpdate(proxy);
-        delete proxy; 
+        default:
+        {
+            LOG_ERROR("invalid proxy state: %d\n", proxy->state_);
+            assert(false);
+        }
     }
     delete resp;
 }
@@ -343,8 +414,8 @@ void ProxyScanner::RequestGenerator(
             }
             --n;
             proxy->state_ = Proxy::SCAN_HTTP;
-            ++proxy->request_cnt_; 
             req_vec.push_back(CreateFetcherRequest(proxy));
+            LOG_INFO("put validate request: %s\n", proxy->ToString().c_str());
         }
     }
 

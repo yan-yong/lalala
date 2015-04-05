@@ -32,6 +32,7 @@ struct Config
     unsigned proxy_error_retry_num_;
     char*    dump_file_name_;
     unsigned dump_interval_seconds_;
+    char*    proxy_judy_url_;
 
     std::vector<uint16_t> port_vec_;
 
@@ -62,6 +63,11 @@ public:
         {
             free(try_https_url_);
             try_https_url_ = NULL;
+        }
+        if(proxy_judy_url_)
+        {
+            free(proxy_judy_url_);
+            proxy_judy_url_ = NULL;
         }
         if(bind_ip_)
         {
@@ -130,6 +136,9 @@ public:
         std::string try_https_url = pt.get<std::string>("Root.TryHttpsUrl");
         try_https_url_ = strdup(try_https_url.c_str());
         try_https_size_= pt.get<unsigned>("Root.TryHttpsUrl.<xmlattr>.size");
+
+        std::string proxy_judy_url = pt.get<std::string>("Root.ProxyJudyUrl");
+        proxy_judy_url_ = strdup(proxy_judy_url.c_str()); 
 
         std::string scan_port_str = pt.get<std::string>("Root.ScanPort");
         std::vector<std::string> port_vec;

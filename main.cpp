@@ -70,6 +70,9 @@ static void WorkerRuntine(ProcessInfo* proc_info)
     proxy_scanner.SetValidateIntervalSeconds(g_cfg->validate_interval_sec_);
     proxy_scanner.SetErrorRetryNum(g_cfg->proxy_error_retry_num_);
     proxy_scanner.SetScanPort(g_cfg->port_vec_);
+    proxy_scanner.SetHttpTryUrl(g_cfg->try_http_url_, g_cfg->try_http_size_);
+    proxy_scanner.SetHttpsTryUrl(g_cfg->try_https_url_, g_cfg->try_https_size_);
+    proxy_scanner.SetProxyJudyUrl(g_cfg->proxy_judy_url_);
     proxy_scanner.Start();
 
     char proc_id_str[100];
@@ -102,6 +105,8 @@ static void WorkerRuntine(ProcessInfo* proc_info)
     LOG_INFO("Worker process %s stopping ...\n", proc_id_str);
     proxy_scanner.Stop();
     LOG_INFO("Worker process %s end.\n", proc_id_str);
+    delete g_cfg;
+    g_cfg = NULL;
     exit(0);
 }
 
