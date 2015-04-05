@@ -89,6 +89,8 @@ static void WorkerRuntine(ProcessInfo* proc_info)
         {
             
             last_dump_time = cur_time;
+            //记录offset
+            proxy_scanner.GetScanOffset(proc_info->offset_);
             if(g_shm->sync() < 0)
                 LOG_ERROR("Share memory sync failed.\n");
             else
@@ -96,7 +98,6 @@ static void WorkerRuntine(ProcessInfo* proc_info)
         }
     }
 
-    //记录offset
     proxy_scanner.GetScanOffset(proc_info->offset_);
     LOG_INFO("Worker process %s stopping ...\n", proc_id_str);
     proxy_scanner.Stop();

@@ -158,6 +158,7 @@ protected:
     std::queue<RawFetcherRequest> req_queue_;
     unsigned error_retry_num_;
     ProxySet::HashKey validate_idx_;
+    unsigned each_validate_max_;
 };
 
 inline time_t current_time_ms();

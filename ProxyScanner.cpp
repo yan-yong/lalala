@@ -58,7 +58,8 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     scan_time_(0), 
     scan_interval_(DEFAULT_SCAN_INTERVAL_SEC*1000),
     proxy_set_(proxy_set), stopped_(false),
-    error_retry_num_(0), validate_idx_(0)
+    error_retry_num_(0), validate_idx_(0),
+    each_validate_max_(100)
 {
     low_range_[0] = low_range_[1] = 0;
     low_range_[2] = low_range_[3] = 0;
@@ -328,7 +329,7 @@ void ProxyScanner::RequestGenerator(
     {
         if(validate_idx_ == 0)
             LOG_INFO("validate begin.\n");
-        for(int i = 0; i < n; i++)
+        for(unsigned i = 0; i < each_validate_max_ && n > 0; i++)
         {
             Proxy * proxy = new Proxy();
             // 验证结束
@@ -340,6 +341,7 @@ void ProxyScanner::RequestGenerator(
                 LOG_INFO("validate end.\n");
                 break;
             }
+            --n;
             proxy->state_ = Proxy::SCAN_HTTP;
             ++proxy->request_cnt_; 
             req_vec.push_back(CreateFetcherRequest(proxy));
