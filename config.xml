@@ -3,15 +3,14 @@
 	<EthName>eth0</EthName>
 	<ListenPort>9090</ListenPort>
 	<WorkProcessCount>1</WorkProcessCount>
-	<MaxConnectCount>104857</MaxConnectCount>
+	<MaxConnectCount>154857</MaxConnectCount>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
-	<ScanOffsetFilePrefix>offset_</ScanOffsetFilePrefix>
 	<ScanLowRange>1.0.0.0</ScanLowRange>
 	<ScanHighRange>255.255.255.255</ScanHighRange>
 	<ScanIntervalSec>3600</ScanIntervalSec>
     	<ValidateIntervalSec>600</ValidateIntervalSec>
-    	<ProxyErrorRetryNum>3</ProxyMaxErrorRetryNum>
-	<ScanPort>80:8080:3128:8118:808</ScanPort>
+    	<ProxyErrorRetryNum>300000</ProxyMaxErrorRetryNum>
+	<ScanPort>80</ScanPort>
 	<TryHttpUrl size = "705">http://www.baidu.com/img/baidu_jgylogo3.gif</TryHttpUrl>
 	<TryHttpsUrl size = "84">https://i.alipayobjects.com/i/ecmng/png/201501/4Jdkug9K2v.png</TryHttpsUrl>
     	<ProxyJudyUrl>http://www.proxyjudge.net/</ProxyJudyUrl>

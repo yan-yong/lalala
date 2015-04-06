@@ -260,6 +260,11 @@ void ProxyScanner::FinishProxy(Proxy* proxy)
     proxy->state_ = Proxy::SCAN_IDLE;
     if(proxy->request_cnt_ == 1)
     {
+        if(proxy_set_->find(*proxy))
+        {
+            delete proxy;
+            return;
+        }
         LOG_INFO("===== %s %u %u %u =====\n", proxy->ip_, 
             proxy->port_, proxy->http_enable_, proxy->https_enable_);
     }
@@ -344,7 +349,8 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
             assert(false);
         }
     }
-    delete resp;
+    if(resp)
+        delete resp;
 }
 
 void ProxyScanner::SetScanRange(unsigned low_range[4], unsigned high_range[4])

@@ -17,7 +17,6 @@ struct Config
     unsigned worker_process_count_;
     unsigned max_connect_count_;
     unsigned connect_timeout_sec_;
-    char* save_offset_file_prefix_;
     unsigned scan_low_range_[4];
     unsigned scan_high_range_[4];
     unsigned scan_interval_sec_;
@@ -48,11 +47,6 @@ public:
         {
             free(config_file_);
             config_file_ = NULL;
-        }
-        if(save_offset_file_prefix_)
-        {
-            free(save_offset_file_prefix_);
-            save_offset_file_prefix_ = NULL;
         }
         if(try_http_url_)
         {
@@ -104,9 +98,6 @@ public:
         worker_process_count_ = pt.get<unsigned>("Root.WorkProcessCount");
         max_connect_count_ = pt.get<unsigned>("Root.MaxConnectCount");
         connect_timeout_sec_ = pt.get<unsigned>("Root.ConnectTimeoutSec");
-        std::string file_prefix = pt.get<std::string>("Root.ScanOffsetFilePrefix");
-        if(!file_prefix.empty())
-            save_offset_file_prefix_ = strdup(file_prefix.c_str());
 
         std::string low_range_str = pt.get<std::string>("Root.ScanLowRange");
         std::vector<std::string> low_range_vec;
