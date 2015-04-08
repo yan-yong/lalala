@@ -4,6 +4,8 @@
 	<ListenPort>9090</ListenPort>
 	<WorkProcessCount>1</WorkProcessCount>
 	<MaxConnectCount>154857</MaxConnectCount>
+    	<MaxTxSpeedByte>2576800</MaxTxSpeedByte>
+	<SynRetries>2</SynRetries>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
 	<ScanLowRange>1.0.0.0</ScanLowRange>
 	<ScanHighRange>255.255.255.255</ScanHighRange>

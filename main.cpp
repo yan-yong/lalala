@@ -73,6 +73,8 @@ static void WorkerRuntine(ProcessInfo* proc_info)
     proxy_scanner.SetHttpTryUrl(g_cfg->try_http_url_, g_cfg->try_http_size_);
     proxy_scanner.SetHttpsTryUrl(g_cfg->try_https_url_, g_cfg->try_https_size_);
     proxy_scanner.SetProxyJudyUrl(g_cfg->proxy_judy_url_);
+    proxy_scanner.SetMaxTxSpeed(g_cfg->tx_max_speed_bytes_);
+    proxy_scanner.SetSynRetryTimes(g_cfg->syn_retries_);
     proxy_scanner.Start();
 
     char proc_id_str[100];
@@ -238,6 +240,12 @@ int main(int argc, char* argv[])
     g_cfg->ReadConfig();
 
     /* initialize */
+    // set tcp syn retry times. notice: will CHANGE system config!!!
+    FILE* syn_fid = fopen("/proc/sys/net/ipv4/tcp_syn_retries", "w");
+    assert(syn_fid);
+    fprintf(syn_fid, "%u", g_cfg->syn_retries_);
+    fclose(syn_fid);
+    //initialize share memeory
     g_shm = new ShareMem(g_cfg->shm_key_, g_cfg->shm_size_, g_cfg->dump_file_name_);
     g_proxy_set = new ProxySet(*g_shm, g_cfg->max_proxy_num_);
     g_proc_info = g_shm->New<ProcessInfo>(MAX_PROCESS_CNT);

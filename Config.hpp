@@ -32,6 +32,8 @@ struct Config
     char*    dump_file_name_;
     unsigned dump_interval_seconds_;
     char*    proxy_judy_url_;
+    size_t   tx_max_speed_bytes_;
+    unsigned   syn_retries_;
 
     std::vector<uint16_t> port_vec_;
 
@@ -129,7 +131,9 @@ public:
         try_https_size_= pt.get<unsigned>("Root.TryHttpsUrl.<xmlattr>.size");
 
         std::string proxy_judy_url = pt.get<std::string>("Root.ProxyJudyUrl");
-        proxy_judy_url_ = strdup(proxy_judy_url.c_str()); 
+        proxy_judy_url_ = strdup(proxy_judy_url.c_str());
+
+        tx_max_speed_bytes_ = pt.get<size_t>("Root.MaxTxSpeedByte");
 
         std::string scan_port_str = pt.get<std::string>("Root.ScanPort");
         std::vector<std::string> port_vec;
@@ -146,6 +150,10 @@ public:
 
         validate_interval_sec_ = pt.get<unsigned>("Root.ValidateIntervalSec");
         proxy_error_retry_num_ = pt.get<unsigned>("Root.ProxyErrorRetryNum");
+
+        syn_retries_ = pt.get<unsigned>("Root.SynRetries");
+        assert(syn_retries_ < 10 && syn_retries_ > 0);
+
         return 0;
     }
 };

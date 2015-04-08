@@ -108,10 +108,10 @@ typedef ShareHashSet<Proxy, HashFunctor> ProxySet;
 
 class ProxyScanner: protected IMessageEvents
 {
-    static const unsigned DEFAULT_SCAN_INTERVAL_SEC  = 0;
+    static const unsigned DEFAULT_SCAN_INTERVAL_SEC    = 0;
     static const unsigned DEFAULT_VALIDATE_INTERVAL_SEC= 600;
+    static const unsigned DEFAULT_REQ_CHECK_INTERVAL   = 100;
 
-    inline time_t __remain_time(time_t last_time, time_t cur_time, time_t interval); 
     void __load_offset_file();
     void __save_offset_file();     
 
@@ -141,8 +141,10 @@ public:
     void SetScanIntervalSeconds(time_t scan_interval_sec);
     void SetErrorRetryNum(unsigned proxy_error_num);
     void SetProxyJudyUrl(std::string url);
+    void SetMaxTxSpeed(size_t max_tx_speed);
+    void SetSynRetryTimes(unsigned retry_times);
     void Stop();
-    void RequestGenerator(int n, std::vector<RawFetcherRequest>& req_vec);
+    void RequestGenerator(int fetcher_quota, std::vector<RawFetcherRequest>& req_vec);
     void Start();
 
 protected:
@@ -172,8 +174,19 @@ protected:
     unsigned error_retry_num_;
     ProxySet::HashKey validate_idx_;
     unsigned each_validate_max_;
+    //单位是Byte
+    size_t max_tx_con_quota_;
+    std::map<time_t, unsigned> conn_traffic_stats_; 
+    unsigned conn_timeout_interval_;
+    unsigned req_interval_;
+    time_t   last_req_time_;
 };
 
-inline time_t current_time_ms();
+inline time_t current_time_ms()
+{
+    timeval tv; 
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec*1000000 + tv.tv_usec) / 1000;
+}
 
 #endif 

@@ -7,19 +7,9 @@
 #include "httpparser/HttpFetchProtocal.hpp"
 #include "log/log.h"
 
-time_t current_time_ms()
-{
-    timeval tv; 
-    gettimeofday(&tv, NULL);
-    return (tv.tv_sec*1000000 + tv.tv_usec) / 1000;
-}
-
-time_t ProxyScanner::__remain_time(time_t last_time, time_t cur_time, time_t interval)
-{ 
-    if(last_time + interval > cur_time)
-        return last_time + interval - cur_time;
-    return 0;
-}
+const double   THRESHOLD_PERCENT = 0.9;
+//tcp第一个握手包大小
+const unsigned TCP_FIRST_PACKET_SIZE = 66;
 
 ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     Fetcher::Params fetch_params, 
@@ -34,7 +24,8 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     scan_interval_(DEFAULT_SCAN_INTERVAL_SEC*1000),
     proxy_set_(proxy_set), stopped_(false),
     error_retry_num_(0), validate_idx_(0),
-    each_validate_max_(100)
+    each_validate_max_(100), max_tx_con_quota_(0),
+    req_interval_(0), last_req_time_(0) 
 {
     low_range_[0] = low_range_[1] = 0;
     low_range_[2] = low_range_[3] = 0;
@@ -62,6 +53,9 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
         assert(getifaddr(AF_INET, 0, eth_name, p_addr) == 0);
         ((struct sockaddr_in*)local_addr_)->sin_family = AF_INET; 
     }
+    conn_timeout_interval_ = fetch_params.conn_timeout.tv_sec * 1000 +
+        fetch_params.conn_timeout.tv_usec / 1000;
+    assert(conn_timeout_interval_ > 0);
 }
 
 ProxyScanner::~ProxyScanner()
@@ -112,6 +106,11 @@ void ProxyScanner::SetProxyJudyUrl(std::string judy_url)
     {
         assert(false);
     }
+}
+
+void ProxyScanner::SetMaxTxSpeed(size_t max_tx_speed)
+{
+    max_tx_con_quota_ = max_tx_speed / TCP_FIRST_PACKET_SIZE;
 }
 
 void ProxyScanner::SetScanPort(const std::vector<uint16_t>& scan_port)
@@ -390,10 +389,33 @@ void ProxyScanner::SetValidateIntervalSeconds(time_t validate_interval_sec)
     validate_interval_ = validate_interval_sec * 1000; 
 }
 
+void ProxyScanner::SetSynRetryTimes(unsigned retry_times)
+{
+    int interval = 1000;
+    for(unsigned i = 1; i <= retry_times; ++i)
+    {
+        req_interval_ += interval;
+        interval *= 2; 
+    }
+    //add 1 second 
+    req_interval_ += 1000;
+    if(conn_timeout_interval_ < req_interval_)
+        req_interval_ = conn_timeout_interval_;
+    LOG_INFO("request interval: %u\n", req_interval_);
+}
+
 void ProxyScanner::RequestGenerator(
-    int n, std::vector<RawFetcherRequest>& req_vec)
+    int fetcher_quota, std::vector<RawFetcherRequest>& req_vec)
 {
     time_t cur_time = current_time_ms();
+    if(cur_time < last_req_time_ + 1000)
+        return;
+    last_req_time_ = cur_time;
+    //计算配额
+    int n = max_tx_con_quota_* 1000 / req_interval_;
+    if(n > fetcher_quota)
+        n = fetcher_quota;
+
     while(!req_queue_.empty() && n > 0)
     {
         RawFetcherRequest req = req_queue_.front();
@@ -427,6 +449,8 @@ void ProxyScanner::RequestGenerator(
 
     if(n > 0)
         GetScanProxyRequest(n, req_vec);
+
+    LOG_INFO("put request: %zd\n", req_vec.size());
 }
 
 void ProxyScanner::Start()
