@@ -14,95 +14,7 @@
 #include "utility/net_utility.h"
 #include "fetcher/Fetcher.hpp"
 #include "shm/ShareHashSet.hpp" 
-#include "utility/murmur_hash.h"
-#include "jsoncpp/include/json/json.h"
- 
-struct Proxy
-{
-    static const unsigned PROXY_SIZE = 50; 
-    enum State
-    {
-        SCAN_IDLE,
-        SCAN_HTTP,
-        SCAN_HTTPS,
-        SCAN_JUDGE
-    } state_;
-    char ip_[16];
-    uint16_t port_;
-    unsigned err_num_;
-    unsigned request_cnt_;
-    time_t request_time_;
-    unsigned char http_enable_ :1;
-    unsigned char https_enable_:1;
-    unsigned char is_foreign   :1;
-    //代理类型
-    enum Type
-    {
-        TYPE_UNKNOWN,
-        TRANSPORT,
-        ANONYMOUS,
-        HIGH_ANONYMOUS
-    } type_;
-
-    char fill_buf_[PROXY_SIZE - sizeof(state_) - sizeof(type_) -
-        sizeof(ip_) - sizeof(port_) - sizeof(err_num_) - 
-        sizeof(request_cnt_) - sizeof(request_time_) - 1];
-
-    Proxy()
-    {
-        memset(this, 0, sizeof(Proxy));
-    }
-
-    Proxy(std::string ip, uint16_t port)
-    {
-        memset(this, 0, sizeof(Proxy));
-        strcpy(ip_, ip.c_str());
-        port_ = port;
-    }
-    ~Proxy()
-    {
-    }
-    std::string ToString() const
-    {
-        char buf[100];
-        snprintf(buf, 100, "%s:%hu", ip_, port_);
-        return buf;
-    }
-    Json::Value ToJson() const
-    {
-        Json::Value json_val;
-        json_val["addr"] = ToString();
-        if(https_enable_)
-            json_val["https"] = "1";
-        if(type_)
-            json_val["type"]  = type_;
-        char available_cnt_str[10];
-        snprintf(available_cnt_str, 10, "%u", 
-            request_cnt_ - err_num_);
-        json_val["avail"] = available_cnt_str;
-        return json_val;
-    }
-    bool operator < (const Proxy& other) const
-    {
-        int ret = strncmp(ip_, other.ip_, 16);
-        return ret < 0 || (ret == 0 && port_ < other.port_);
-    }
-    struct sockaddr * AcquireSockAddr() const
-    {
-        return get_sockaddr_in(ip_, port_);
-    }
-} __attribute__((packed));
-
-struct HashFunctor
-{
-    uint64_t operator () (const Proxy& proxy)
-    {
-        uint64_t val = 0;
-        std::string proxy_str = proxy.ToString();
-        MurmurHash_x64_64(proxy_str.c_str(), proxy_str.size(), &val);
-        return val; 
-    }
-};
+#include "Proxy.hpp" 
 
 typedef ShareHashSet<Proxy, HashFunctor> ProxySet; 
 
@@ -124,7 +36,7 @@ protected:
     virtual void GetScanProxyRequest(int, std::vector<RawFetcherRequest>&);
     virtual void FinishProxy(Proxy* proxy);
     virtual void ProcessResult(const RawFetcherResult&);
-    RawFetcherRequest CreateFetcherRequest(Proxy* proxy);
+    RawFetcherRequest CreateFetcherRequest(Proxy* proxy, Connection* conn = NULL);
  
 public:
     ProxyScanner(ProxySet * proxy_set,
@@ -140,8 +52,9 @@ public:
     void SetValidateIntervalSeconds(time_t validate_interval_sec);
     void SetScanIntervalSeconds(time_t scan_interval_sec);
     void SetErrorRetryNum(unsigned proxy_error_num);
-    void SetProxyJudyUrl(std::string url);
+    void SetProxyJudyUrl(std::string url, size_t max_size);
     void SetMaxTxSpeed(size_t max_tx_speed);
+    void SetMaxRxSpeed(size_t max_rx_speed);
     void SetSynRetryTimes(unsigned retry_times);
     void Stop();
     void RequestGenerator(int fetcher_quota, std::vector<RawFetcherRequest>& req_vec);
@@ -157,6 +70,7 @@ protected:
     URI*    try_https_uri_;
     size_t  try_https_size_;
     URI*    proxy_judy_uri_;
+    size_t  max_http_body_size_;
     boost::shared_ptr<ThreadingFetcher> fetcher_;
     std::vector<uint16_t> scan_port_;
     unsigned offset_[4];
@@ -173,13 +87,20 @@ protected:
     std::queue<RawFetcherRequest> req_queue_;
     unsigned error_retry_num_;
     ProxySet::HashKey validate_idx_;
-    unsigned each_validate_max_;
-    //单位是Byte
-    size_t max_tx_con_quota_;
-    std::map<time_t, unsigned> conn_traffic_stats_; 
-    unsigned conn_timeout_interval_;
-    unsigned req_interval_;
-    time_t   last_req_time_;
+    time_t   conn_timeout_;
+    //最大入带宽，单位是Byte
+    size_t   max_tx_traffic_;
+    time_t   last_tx_stat_time_;
+    unsigned syn_retry_times_;
+    //当前由正常连接造成的出带宽
+    size_t   cur_tx_traffic_;
+    //当前入带宽
+    size_t   cur_rx_traffic_;
+    //最大出带宽，单位是Byte
+    size_t   max_rx_traffic_;
+    time_t   last_rx_stat_time_;
+    time_t   fit_rx_begin_time_;
+    size_t   each_validate_max_;
 };
 
 inline time_t current_time_ms()

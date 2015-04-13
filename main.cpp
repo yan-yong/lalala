@@ -54,15 +54,13 @@ static void SetupSignalHandler(bool is_worker);
 
 static void WorkerRuntine(ProcessInfo* proc_info)
 {
-    for(int i = 3; i < sysconf(_SC_OPEN_MAX); i++)
-        close(i);
-    SetupSignalHandler(true);
     Fetcher::Params fetch_params;
     memset(&fetch_params, 0, sizeof(fetch_params));
     fetch_params.conn_timeout.tv_sec = g_cfg->connect_timeout_sec_;
     fetch_params.max_connecting_cnt  = g_cfg->max_connect_count_;
     fetch_params.socket_rcvbuf_size  = 8096;
     fetch_params.socket_sndbuf_size  = 8096;
+    //fetch_params.rx_speed_max = g_cfg->rx_max_speed_bytes_;
     ProxyScanner proxy_scanner(g_proxy_set, fetch_params);
     proxy_scanner.SetScanOffset(proc_info->offset_);
     proxy_scanner.SetScanRange(proc_info->low_range_, proc_info->high_range_);
@@ -72,8 +70,9 @@ static void WorkerRuntine(ProcessInfo* proc_info)
     proxy_scanner.SetScanPort(g_cfg->port_vec_);
     proxy_scanner.SetHttpTryUrl(g_cfg->try_http_url_, g_cfg->try_http_size_);
     proxy_scanner.SetHttpsTryUrl(g_cfg->try_https_url_, g_cfg->try_https_size_);
-    proxy_scanner.SetProxyJudyUrl(g_cfg->proxy_judy_url_);
-    proxy_scanner.SetMaxTxSpeed(g_cfg->tx_max_speed_bytes_);
+    proxy_scanner.SetProxyJudyUrl(g_cfg->proxy_judy_url_, g_cfg->proxy_judy_size_);
+    proxy_scanner.SetMaxTxSpeed(g_cfg->tx_max_speed_bytes_ / g_cfg->worker_process_count_);
+    proxy_scanner.SetMaxRxSpeed(g_cfg->rx_max_speed_bytes_ / g_cfg->worker_process_count_);
     proxy_scanner.SetSynRetryTimes(g_cfg->syn_retries_);
     proxy_scanner.Start();
 
@@ -147,9 +146,21 @@ static void SpawnWorkerProcess()
             memcpy(g_proc_info[i].low_range_ + 1, low_range + 1, 3*sizeof(*low_range));
             memcpy(g_proc_info[i].high_range_+ 1, high_range+ 1, 3*sizeof(*high_range));
         }
+
+#ifdef PROXY_DEBUG
+        //don't fork child process, use for debug
+        WorkerRuntine(g_proc_info + i);
+        return;
+#endif
+        //fork child process
         pid_t child_pid = fork();
         if(child_pid == 0)
+        {
+            for(int j = 3; j < sysconf(_SC_OPEN_MAX); j++)
+                close(i);
+            SetupSignalHandler(true);
             WorkerRuntine(g_proc_info + i);
+        }
         g_proc_info[i].pid_ = child_pid;
         ++g_proc_num;
     }

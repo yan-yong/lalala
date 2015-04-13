@@ -32,8 +32,11 @@ struct Config
     char*    dump_file_name_;
     unsigned dump_interval_seconds_;
     char*    proxy_judy_url_;
+    unsigned proxy_judy_size_;
     size_t   tx_max_speed_bytes_;
     unsigned   syn_retries_;
+    size_t   rx_max_speed_bytes_;
+    size_t   max_http_body_size_;
 
     std::vector<uint16_t> port_vec_;
 
@@ -131,7 +134,8 @@ public:
         try_https_size_= pt.get<unsigned>("Root.TryHttpsUrl.<xmlattr>.size");
 
         std::string proxy_judy_url = pt.get<std::string>("Root.ProxyJudyUrl");
-        proxy_judy_url_ = strdup(proxy_judy_url.c_str());
+        proxy_judy_url_  = strdup(proxy_judy_url.c_str());
+        proxy_judy_size_ = pt.get<unsigned>("Root.ProxyJudyUrl.<xmlattr>.maxsize");
 
         tx_max_speed_bytes_ = pt.get<size_t>("Root.MaxTxSpeedByte");
 
@@ -153,6 +157,9 @@ public:
 
         syn_retries_ = pt.get<unsigned>("Root.SynRetries");
         assert(syn_retries_ < 10 && syn_retries_ > 0);
+
+        rx_max_speed_bytes_ = pt.get<size_t>("Root.MaxRxSpeedByte");
+        //max_http_body_size_ = pt.get<size_t>("Root.MaxHttpBodySize");
 
         return 0;
     }
