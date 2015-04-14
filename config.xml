@@ -4,9 +4,9 @@
 	<ListenPort>9090</ListenPort>
 	<WorkProcessCount>1</WorkProcessCount>
 	<MaxConnectCount>304857</MaxConnectCount>
-	<MaxTxSpeedByte>1832160</MaxTxSpeedByte>
+	<MaxTxSpeedByte>1032160</MaxTxSpeedByte>
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>
-	<SynRetries>2</SynRetries>
+	<SynRetries>1</SynRetries>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
 	<ScanLowRange>1.0.0.0</ScanLowRange>
 	<ScanHighRange>255.255.255.255</ScanHighRange>
@@ -14,7 +14,7 @@
 	<ValidateIntervalSec>600</ValidateIntervalSec>
 	<ProxyErrorRetryNum>300000</ProxyMaxErrorRetryNum>
 	<ScanPort>80</ScanPort>
-	<TryHttpUrl size = "708">http://www.baidu.com/img/baidu_jgylogo1.gif</TryHttpUrl>
+	<TryHttpUrl size = "43">http://s.qhupdate.com/sou/home.gif</TryHttpUrl>
 	<TryHttpsUrl size = "84">https://i.alipayobjects.com/i/ecmng/png/201501/4Jdkug9K2v.png</TryHttpsUrl>
 	<ProxyJudyUrl maxsize = "1200">http://www.proxyjudge.net/</ProxyJudyUrl>
 	<ShmKey>12345</ShmKey>

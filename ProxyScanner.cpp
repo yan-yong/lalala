@@ -324,6 +324,9 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
     {
         //http数据入包
         cur_rx_traffic_ += resp->Body.size();
+        char error_msg[100];
+        if(resp->ContentEncoding(error_msg) != 0)
+            LOG_INFO("%s ContentEncoding error: %s\n", proxy->ToString().c_str(), error_msg);
     }
 
     //用户打提示日志的
@@ -367,10 +370,18 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
                 req_queue_.push(CreateFetcherRequest(proxy, fetch_result.conn));
                 delete resp;
                 LOG_INFO("request CONNECT success: %s\n", proxy->ToString().c_str());
+                //not close connection, just return.
                 return;
             }
             LOG_INFO("request CONNECT error: %s %u\n", proxy->ToString().c_str(), proxy->err_num_);
-            FinishProxy(proxy);
+            // no need judy proxy --> end
+            if(proxy->type_ != Proxy::TYPE_UNKNOWN || !proxy_judy_uri_)
+            {
+                FinishProxy(proxy);
+                break; 
+            }
+            proxy->state_ = Proxy::SCAN_JUDGE;
+            req_queue_.push(CreateFetcherRequest(proxy));
             break;
         }
         case(Proxy::SCAN_HTTPS):
@@ -406,9 +417,10 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
                     proxy->type_ = Proxy::TRANSPORT;
                 else
                     proxy->type_ = Proxy::HIGH_ANONYMOUS;
+                LOG_INFO("request JUDGE success: %s %d\n", proxy->ToString().c_str(), proxy->type_);
             }
             else
-                LOG_ERROR("request JUDGE error: %s\n", proxy->ToString().c_str());
+                LOG_INFO("request JUDGE error: %s\n", proxy->ToString().c_str());
             FinishProxy(proxy);
             break;
         }
@@ -470,18 +482,21 @@ void ProxyScanner::RequestGenerator(
     if(seq_idx  == 0)
     {
         Proxy * proxy = new Proxy();
-        strcpy(proxy->ip_, "84.145.138.23");
+        strcpy(proxy->ip_, "12.68.114.242");
         proxy->port_ = 80;
-        //strcpy(proxy->ip_, "192.168.15.235");
-        //proxy->port_ = 12345;
-
-        proxy->state_ = Proxy::SCAN_HTTPS;
-        //std::string req_url = "http://www.baidu.com/";
-        std::string req_url = "https://i.alipayobjects.com/i/ecmng/png/201501/4Jdkug9K2v.png";
-        assert(UriParse(req_url.c_str(), req_url.size(), *try_http_uri_) && HttpUriNormalize(*try_http_uri_));
+    
+        //std::string req_url = "http://www.proxyjudge.net/";
+        //assert(UriParse(req_url.c_str(), req_url.size(), *try_http_uri_) && HttpUriNormalize(*try_http_uri_));
+        proxy->state_ = Proxy::SCAN_HTTP;
         req_vec.push_back(CreateFetcherRequest(proxy));
     }
     ++seq_idx;
+    while(!req_queue_.empty())
+    {
+        RawFetcherRequest req = req_queue_.front();
+        req_queue_.pop();
+        req_vec.push_back(req);
+    }
     return; 
 #endif
 
@@ -612,7 +627,7 @@ struct RequestData* ProxyScanner::CreateRequestData(void * contex)
         req->Headers.Add("Host", uri->Host());
         req->Headers.Add("Accept", "*/*");
         req->Headers.Add("Accept-Language", "zh-cn");
-        req->Headers.Add("Accept-Encoding", "*");
+        req->Headers.Add("Accept-Encoding", "gzip, deflate");
         req->Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 6.1)");
     }
     req->Close();
