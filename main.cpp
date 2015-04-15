@@ -2,21 +2,20 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "log/log.h"
-#include "ProxyScanner.hpp"
 #include <sys/types.h>
 #include <sys/wait.h>
+#include "log/log.h"
+#include "ProxyScanner.hpp"
 #include "Config.hpp"
 #include "httpserver/httpserver.h"
 #include "lock/lock.hpp"
+#include "ScannerCounter.hpp"
 
 /* 保存进程运行信息 */
 struct ProcessInfo
 {
     int pid_;
-    unsigned low_range_[4];
-    unsigned high_range_[4];
-    unsigned offset_[4];
+    IpTriple offset_;
 };
 
 /* 全局变量 */
@@ -52,7 +51,7 @@ class ProxyService: public HttpServer
 
 static void SetupSignalHandler(bool is_worker);
 
-static void WorkerRuntine(ProcessInfo* proc_info)
+static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter)
 {
     Fetcher::Params fetch_params;
     memset(&fetch_params, 0, sizeof(fetch_params));
@@ -61,9 +60,7 @@ static void WorkerRuntine(ProcessInfo* proc_info)
     fetch_params.socket_rcvbuf_size  = 8096;
     fetch_params.socket_sndbuf_size  = 8096;
     //fetch_params.rx_speed_max = g_cfg->rx_max_speed_bytes_;
-    ProxyScanner proxy_scanner(g_proxy_set, fetch_params);
-    proxy_scanner.SetScanOffset(proc_info->offset_);
-    proxy_scanner.SetScanRange(proc_info->low_range_, proc_info->high_range_);
+    ProxyScanner proxy_scanner(g_proxy_set, fetch_params, &scanner_counter, g_cfg->bind_ip_);
     proxy_scanner.SetScanIntervalSeconds(g_cfg->scan_interval_sec_);
     proxy_scanner.SetValidateIntervalSeconds(g_cfg->validate_interval_sec_);
     proxy_scanner.SetErrorRetryNum(g_cfg->proxy_error_retry_num_);
@@ -77,9 +74,7 @@ static void WorkerRuntine(ProcessInfo* proc_info)
     proxy_scanner.Start();
 
     char proc_id_str[100];
-    snprintf(proc_id_str, 100, "%d (%d.%d.%d.%d - %d.%d.%d.%d)", getpid(),
-        proc_info->low_range_[0], proc_info->low_range_[1], proc_info->low_range_[2], proc_info->low_range_[3],
-        proc_info->high_range_[0],proc_info->high_range_[1],proc_info->high_range_[2],proc_info->high_range_[3]);
+    snprintf(proc_id_str, 100, "%d %s", getpid(), proc_info->offset_.ToString().c_str());
     LOG_INFO("Worker process %s start.\n", proc_id_str);
 
     time_t last_dump_time = current_time_ms();
@@ -94,7 +89,7 @@ static void WorkerRuntine(ProcessInfo* proc_info)
             
             last_dump_time = cur_time;
             //记录offset
-            proxy_scanner.GetScanOffset(proc_info->offset_);
+            scanner_counter.GetOffset(proc_info->offset_);
             if(g_shm->sync() < 0)
                 LOG_ERROR("Share memory sync failed.\n");
             else
@@ -102,7 +97,7 @@ static void WorkerRuntine(ProcessInfo* proc_info)
         }
     }
 
-    proxy_scanner.GetScanOffset(proc_info->offset_);
+    scanner_counter.GetOffset(proc_info->offset_);
     LOG_INFO("Worker process %s stopping ...\n", proc_id_str);
     proxy_scanner.Stop();
     LOG_INFO("Worker process %s end.\n", proc_id_str);
@@ -114,42 +109,21 @@ static void WorkerRuntine(ProcessInfo* proc_info)
 static void SpawnWorkerProcess()
 {
     unsigned worker_process_count = g_cfg->worker_process_count_;
-    unsigned* low_range = g_cfg->scan_low_range_;
-    unsigned* high_range= g_cfg->scan_high_range_;
     assert(worker_process_count < (unsigned)MAX_PROCESS_CNT);
-    int range_interval = (high_range[0] - low_range[0]) / worker_process_count;
-    if(range_interval == 0)
-        range_interval = 1;
-    //check process num 
+
+    //check process num
+    std::vector<ScannerCounter> scanner_counter_vec = 
+         g_cfg->scanner_counter_.Split(worker_process_count); 
     for(unsigned i = 0; g_proc_num < worker_process_count && i < worker_process_count; i++)
     {
         if(g_proc_info[i].pid_)
             continue;
-        if(g_proc_info[i].low_range_[0] == 0)
-        {
-            g_proc_info[i].low_range_[0]  = low_range[0] + i * range_interval;
-            if(i != 0)
-                g_proc_info[i].low_range_[0] += 1;
-            g_proc_info[i].high_range_[0] = low_range[0] + (i+1)*range_interval;
-            if(g_proc_info[i].low_range_[0] > 255)
-                g_proc_info[i].low_range_[0] = 255;
-            if(g_proc_info[i].high_range_[0] > 255)
-                g_proc_info[i].high_range_[0] = 255;
-            if(g_proc_info[i].low_range_[0] > g_proc_info[i].high_range_[0] ||
-                    low_range[1] + low_range[2] + low_range[3] >=
-                    high_range[1]+ high_range[2]+ high_range[3] )
-            {
-                g_proc_info[i].low_range_[0] = 0;
-                g_proc_info[i].high_range_[0]= 0;
-                break;
-            }
-            memcpy(g_proc_info[i].low_range_ + 1, low_range + 1, 3*sizeof(*low_range));
-            memcpy(g_proc_info[i].high_range_+ 1, high_range+ 1, 3*sizeof(*high_range));
-        }
+        ScannerCounter scanner_counter = scanner_counter_vec[i];
+        scanner_counter.SetOffset(g_proc_info[i].offset_);
 
 #ifdef PROXY_DEBUG
         //don't fork child process, use for debug
-        WorkerRuntine(g_proc_info + i);
+        WorkerRuntine(g_proc_info + i, scanner_counter);
         return;
 #endif
         //fork child process
@@ -159,7 +133,7 @@ static void SpawnWorkerProcess()
             for(int j = 3; j < sysconf(_SC_OPEN_MAX); j++)
                 close(i);
             SetupSignalHandler(true);
-            WorkerRuntine(g_proc_info + i);
+            WorkerRuntine(g_proc_info + i, scanner_counter);
         }
         g_proc_info[i].pid_ = child_pid;
         ++g_proc_num;
@@ -183,12 +157,8 @@ static void SigChildHandler(int sig)
         {
             if(pid == g_proc_info[i].pid_) 
             {
-                LOG_INFO("Found process %d (%d.%d.%d.%d - %d.%d.%d.%d) quited.\n", pid, 
-                    g_proc_info[i].low_range_[0], g_proc_info[i].low_range_[1], 
-                    g_proc_info[i].low_range_[2], g_proc_info[i].low_range_[3], 
-                    g_proc_info[i].high_range_[0], g_proc_info[i].high_range_[1], 
-                    g_proc_info[i].high_range_[2], g_proc_info[i].high_range_[3]);
-
+                LOG_INFO("Found process %d %s quited.\n", 
+                    pid, g_proc_info[i].offset_.ToString().c_str());
                 g_proc_info[i].pid_ = 0;
                 std::swap(g_proc_info[i], g_proc_info[g_proc_num - 1]);
                 --g_proc_num;

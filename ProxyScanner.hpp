@@ -15,6 +15,7 @@
 #include "fetcher/Fetcher.hpp"
 #include "shm/ShareHashSet.hpp" 
 #include "Proxy.hpp" 
+#include "ScannerCounter.hpp"
 
 typedef ShareHashSet<Proxy, HashFunctor> ProxySet; 
 
@@ -41,14 +42,12 @@ protected:
 public:
     ProxyScanner(ProxySet * proxy_set,
         Fetcher::Params fetch_params,
-        const char* eth_name = NULL);
+        ScannerCounter * scanner_counter,
+        const char* ip_addr_str = NULL);
     ~ProxyScanner();
     void SetHttpTryUrl(std::string try_url, size_t page_size);
     void SetHttpsTryUrl(std::string try_url, size_t page_size);
     void SetScanPort(const std::vector<uint16_t>& scan_port);
-    void SetScanRange(unsigned low_range[4], unsigned high_range[4]); 
-    void SetScanOffset(unsigned offset[4]);
-    void GetScanOffset(unsigned offset[4]) const;
     void SetValidateIntervalSeconds(time_t validate_interval_sec);
     void SetScanIntervalSeconds(time_t scan_interval_sec);
     void SetErrorRetryNum(unsigned proxy_error_num);
@@ -62,8 +61,7 @@ public:
 
 protected:
     Fetcher::Params params_;
-    time_t offset_save_interval_;
-    time_t offset_save_time_;
+    ScannerCounter * scanner_counter_;
     Fetcher::Params fetcher_params_;
     URI*    try_http_uri_;
     size_t  try_http_size_;
@@ -73,10 +71,7 @@ protected:
     size_t  max_http_body_size_;
     boost::shared_ptr<ThreadingFetcher> fetcher_;
     std::vector<uint16_t> scan_port_;
-    unsigned offset_[4];
     unsigned port_idx_;
-    unsigned low_range_[4];
-    unsigned high_range_[4];
     sockaddr* local_addr_;
     time_t validate_time_;
     time_t validate_interval_;

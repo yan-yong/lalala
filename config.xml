@@ -8,11 +8,14 @@
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>
 	<SynRetries>1</SynRetries>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
-	<ScanLowRange>1.0.0.0</ScanLowRange>
-	<ScanHighRange>255.255.255.255</ScanHighRange>
+	<ScanIpFile>ip.dat</ScanIpFile>
 	<ScanIntervalSec>3600</ScanIntervalSec>
+	<Nodes>
+		192.168.15.235; 
+		192.168.15.234;
+	</Nodes>
 	<ValidateIntervalSec>600</ValidateIntervalSec>
-	<ProxyErrorRetryNum>300000</ProxyMaxErrorRetryNum>
+	<ProxyErrorRetryNum>5</ProxyMaxErrorRetryNum>
 	<ScanPort>80</ScanPort>
 	<TryHttpUrl size = "43">http://s.qhupdate.com/sou/home.gif</TryHttpUrl>
 	<TryHttpsUrl size = "84">https://i.alipayobjects.com/i/ecmng/png/201501/4Jdkug9K2v.png</TryHttpsUrl>

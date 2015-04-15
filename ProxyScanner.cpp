@@ -15,9 +15,10 @@ const unsigned TCP_CLOSE_PACKET_SIZE = 54*2;
 const unsigned TCP_DATA_HEADER_SIZE  = 54;
 
 ProxyScanner::ProxyScanner(ProxySet * proxy_set,
-    Fetcher::Params fetch_params, 
-    const char* eth_name):
-    offset_save_time_(0), 
+    Fetcher::Params fetch_params,
+    ScannerCounter * scanner_counter, 
+    const char* ip_addr_str):
+    scanner_counter_(scanner_counter),
     try_http_uri_(NULL), try_http_size_(0),
     try_https_uri_(NULL),try_https_size_(0),
     proxy_judy_uri_(NULL), 
@@ -34,12 +35,6 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     max_rx_traffic_(0), last_rx_stat_time_(0),
     fit_rx_begin_time_(0), each_validate_max_(1)
 {
-    low_range_[0] = low_range_[1] = 0;
-    low_range_[2] = low_range_[3] = 0;
-    high_range_[0] = high_range_[1] = 255;
-    high_range_[2] = high_range_[3] = 255;
-
-    memset(offset_, 0, sizeof(offset_));
     uint16_t scan_ports[] = {80, 8080, 3128, 8118, 808};
     scan_port_.assign(scan_ports, scan_ports + sizeof(scan_ports)/sizeof(*scan_ports));
     memcpy(&params_, &fetch_params, sizeof(fetch_params));
@@ -52,13 +47,11 @@ ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     ThreadingFetcher::RequestGenerator req_generator =
         boost::bind(&ProxyScanner::RequestGenerator, this, _1, _2);
     fetcher_->SetRequestGenerator(req_generator);
-    if(eth_name)
+    if(ip_addr_str)
     {
         local_addr_ = (struct sockaddr*)malloc(sizeof(struct sockaddr));
-        memset(local_addr_, 0, sizeof(struct sockaddr)); 
-        struct in_addr * p_addr = &((struct sockaddr_in*)local_addr_)->sin_addr;
-        assert(getifaddr(AF_INET, 0, eth_name, p_addr) == 0);
-        ((struct sockaddr_in*)local_addr_)->sin_family = AF_INET; 
+        memset(local_addr_, 0, sizeof(struct sockaddr));
+        local_addr_ = get_sockaddr_in(ip_addr_str, 0);
     }
 
     conn_timeout_ = params_.conn_timeout.tv_sec * 1000 + params_.conn_timeout.tv_usec / 1000;
@@ -138,11 +131,6 @@ void ProxyScanner::SetScanPort(const std::vector<uint16_t>& scan_port)
     scan_port_ = scan_port;
 }
 
-void ProxyScanner::SetScanOffset(unsigned offset[4])
-{
-    memcpy(offset_, offset, sizeof(offset_));
-}
-
 RawFetcherRequest ProxyScanner::CreateFetcherRequest(Proxy* proxy, Connection* conn)
 {
     assert(proxy->state_ != Proxy::SCAN_IDLE);
@@ -199,76 +187,45 @@ void ProxyScanner::GetScanProxyRequest(
     int n, std::vector<RawFetcherRequest>& req_vec)
 {
     time_t cur_time = current_time_ms();
-    if(offset_[0]  == low_range_[0] && 
-        offset_[1] == low_range_[1] &&
-        offset_[2] == low_range_[2] &&
-        offset_[3] == low_range_[3] &&
-        port_idx_ == 0)
+    if(scanner_counter_->IsBegin() && port_idx_ == 0)
     {
         if(scan_time_ + scan_interval_ > cur_time)
             return;
-        LOG_INFO("####### Start scan from %d.%d.%d.%d (%d.%d.%d.%d - %d.%d.%d.%d) ########\n",
-            offset_[0], offset_[1], offset_[2], offset_[3],
-            low_range_[0], low_range_[1], low_range_[2], low_range_[3],
-            high_range_[0], high_range_[1], high_range_[2], high_range_[3]);
+        IpTriple offset;
+        scanner_counter_->GetOffset(offset);
+        LOG_INFO("####### Start scan from %s ########\n",
+            offset.ToString().c_str());
         scan_time_ = cur_time;
     }
 
     for(int i = 0 ; i < n; i++)
     {
         //进位
-        if(port_idx_ == scan_port_.size())
+        if(++port_idx_ >= scan_port_.size())
         {
             port_idx_ = 0;
-            offset_[3]++;
+            ++(*scanner_counter_);
         }
-        for(int i = 3; i >= 1; --i)
-        {
-            if(offset_[i] > high_range_[i])
-            {
-                offset_[i] = low_range_[i];
-                offset_[i-1]++;
-            }
-        }
-        //跳过内网地址
-        if(offset_[0] == 10)
-        {
-            offset_[0] = 11;
-            offset_[1] = low_range_[1];
-            offset_[2] = low_range_[2];
-            offset_[3] = low_range_[3];
-        }
-        if(offset_[0] == 172 && offset_[1] >= 16 && offset_[1] <= 31)
-        {
-            offset_[1] = 32;
-            offset_[2] = low_range_[2];
-            offset_[3] = low_range_[3];
-        }
-        if(offset_[0] == 192 && offset_[1] == 168)
-        {
-            offset_[1] = 169;
-            offset_[2] = low_range_[2];
-            offset_[3] = low_range_[3];
-        }
+
+        IpTriple offset;
+        scanner_counter_->GetOffset(offset);
         //检查是否结束
-        if(offset_[0] > high_range_[0])
+        if(scanner_counter_->IsEnd())
         {
-            LOG_INFO("####### End scan from %d.%d.%d.%d (%d.%d.%d.%d - %d.%d.%d.%d) ########\n",
-                offset_[0], offset_[1], offset_[2], offset_[3],
-                low_range_[0], low_range_[1], low_range_[2], low_range_[3],
-                high_range_[0], high_range_[1], high_range_[2], high_range_[3]);
-            memcpy(offset_, low_range_, sizeof(low_range_));
+
+            LOG_INFO("####### End scan from %s ########\n", 
+                offset.ToString().c_str());
             port_idx_ = 0;
+            scanner_counter_->Reset();
             return;
         }
+
         uint16_t port = scan_port_[port_idx_];
         char ip_str[200];
-        snprintf(ip_str, 200, "%d.%d.%d.%d", offset_[0], 
-                offset_[1], offset_[2], offset_[3]);
+        snprintf(ip_str, 200, "%s", offset.ToString().c_str());
         Proxy * proxy = new Proxy(ip_str, port);
         proxy->state_ = Proxy::SCAN_HTTP;
         req_vec.push_back(CreateFetcherRequest(proxy));
-        ++port_idx_;
     }
 }
 
@@ -437,28 +394,6 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
         delete resp;
 }
 
-void ProxyScanner::SetScanRange(unsigned low_range[4], unsigned high_range[4])
-{
-    if(high_range_[0] > 255)
-        high_range_[0] = 255;
-    if(high_range_[1] > 255)
-        high_range_[1] = 255;
-    if(high_range_[2] > 255)
-        high_range_[2] = 255;
-    if(high_range_[3] > 255)
-        high_range_[3] = 255;
-    if(offset_[0] < low_range[0])
-        offset_[0] = low_range[0];
-    if(offset_[1] < low_range[1])
-        offset_[1] = low_range[1];
-    if(offset_[2] < low_range[2])
-        offset_[2] = low_range[2];
-    if(offset_[3] < low_range[3])
-        offset_[3] = low_range[3];
-    memcpy(low_range_,  low_range,  4*sizeof(low_range[0]));
-    memcpy(high_range_, high_range, 4*sizeof(high_range[0]));
-}
-
 void ProxyScanner::SetScanIntervalSeconds(time_t scan_interval_sec)
 {
     scan_interval_ = scan_interval_sec * 1000; 
@@ -482,12 +417,12 @@ void ProxyScanner::RequestGenerator(
     if(seq_idx  == 0)
     {
         Proxy * proxy = new Proxy();
-        strcpy(proxy->ip_, "12.68.114.242");
+        strcpy(proxy->ip_, "1.13.234.192");
         proxy->port_ = 80;
     
         //std::string req_url = "http://www.proxyjudge.net/";
         //assert(UriParse(req_url.c_str(), req_url.size(), *try_http_uri_) && HttpUriNormalize(*try_http_uri_));
-        proxy->state_ = Proxy::SCAN_HTTP;
+        proxy->state_ = Proxy::SCAN_JUDGE;
         req_vec.push_back(CreateFetcherRequest(proxy));
     }
     ++seq_idx;
@@ -500,7 +435,7 @@ void ProxyScanner::RequestGenerator(
     return; 
 #endif
 
-    static const int REQUEST_INTERVAL = 100;
+    static const int REQUEST_INTERVAL = 50;
     static const int tx_traffic_quota = max_tx_traffic_ == 0 ? INT_MAX : max_tx_traffic_ * REQUEST_INTERVAL / ((syn_retry_times_ + 1) * TCP_FIRST_PACKET_SIZE * 1000);
     static const int http_data_size   = (max_http_body_size_ + 200)*0.8 + TCP_DATA_HEADER_SIZE;
     static const int rx_traffic_quota = max_rx_traffic_ == 0 ? INT_MAX : std::max(max_rx_traffic_*REQUEST_INTERVAL / (1000*http_data_size), (size_t)1);
@@ -540,8 +475,8 @@ void ProxyScanner::RequestGenerator(
         cur_rx_traffic_ = 0;
     }
     int max_validate_num = each_validate_max_;
-    LOG_INFO("###### cur_rx_traffic_: %zd --> %d\n", 
-        cur_rx_traffic_, max_validate_num);
+    //LOG_INFO("###### cur_rx_traffic_: %zd --> %d\n", 
+    //    cur_rx_traffic_, max_validate_num);
 
     /// 1) 处理https的请求
     while(!req_queue_.empty() && n > 0 && max_validate_num > 0)
@@ -580,17 +515,12 @@ void ProxyScanner::RequestGenerator(
     if(n > 0)
         GetScanProxyRequest(n, req_vec);
 
-    LOG_INFO("put request: %zd\n", req_vec.size());
+    //LOG_INFO("put request: %zd\n", req_vec.size());
 }
 
 void ProxyScanner::Start()
 {
     fetcher_->Begin(params_);
-}
-
-void ProxyScanner::GetScanOffset(unsigned offset[4]) const
-{
-    memcpy(offset, offset_, sizeof(offset_));
 }
 
 struct RequestData* ProxyScanner::CreateRequestData(void * contex)
@@ -599,15 +529,32 @@ struct RequestData* ProxyScanner::CreateRequestData(void * contex)
     HttpFetcherRequest* req = new HttpFetcherRequest();
     req->Clear();
     URI * uri = NULL;
-    if(proxy->state_ == Proxy::SCAN_HTTP)
+    switch(proxy->state_)
     {
-        req->Uri    = try_http_uri_->ToString();
-        uri  = try_http_uri_;
-    }
-    else
-    {
-        req->Uri    = try_https_uri_->ToString();
-        uri  = try_https_uri_;
+        case Proxy::SCAN_HTTP:
+        {
+            uri = try_http_uri_;
+            break;
+        }
+        case Proxy::SCAN_CONNECT:
+        {
+            uri = try_https_uri_;
+            break;
+        }
+        case Proxy::SCAN_HTTPS:
+        {
+            uri = try_https_uri_; 
+            break;
+        }
+        case Proxy::SCAN_JUDGE:
+        {
+            uri = proxy_judy_uri_;
+            break;
+        }
+        default:
+        {
+            assert(false);
+        }
     }
 
     if(proxy->state_ == Proxy::SCAN_CONNECT)
@@ -618,10 +565,12 @@ struct RequestData* ProxyScanner::CreateRequestData(void * contex)
             host_with_port += ":" + uri->Port();
         else
             host_with_port += ":443";
+        req->Uri    = host_with_port;
         req->Headers.Add("Host", host_with_port);
     }
     else
     {
+        req->Uri    = uri->ToString();
         req->Method = "GET";
         req->Version= "HTTP/1.1";
         req->Headers.Add("Host", uri->Host());

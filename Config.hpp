@@ -6,6 +6,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp> 
 #include <string>
+#include <boost/regex.hpp>
 #include "utility/string_utility.h"
 #include "utility/net_utility.h"
 
@@ -17,8 +18,6 @@ struct Config
     unsigned worker_process_count_;
     unsigned max_connect_count_;
     unsigned connect_timeout_sec_;
-    unsigned scan_low_range_[4];
-    unsigned scan_high_range_[4];
     unsigned scan_interval_sec_;
     char* try_http_url_;
     unsigned try_http_size_; 
@@ -34,11 +33,13 @@ struct Config
     char*    proxy_judy_url_;
     unsigned proxy_judy_size_;
     size_t   tx_max_speed_bytes_;
-    unsigned   syn_retries_;
+    unsigned syn_retries_;
     size_t   rx_max_speed_bytes_;
     size_t   max_http_body_size_;
 
-    std::vector<uint16_t> port_vec_;
+    std::vector<uint16_t>    port_vec_;
+    std::vector<std::string> nodes_ip_;
+    ScannerCounter     scanner_counter_;
 
 public:
     Config(const char* config_file)
@@ -104,26 +105,39 @@ public:
         max_connect_count_ = pt.get<unsigned>("Root.MaxConnectCount");
         connect_timeout_sec_ = pt.get<unsigned>("Root.ConnectTimeoutSec");
 
-        std::string low_range_str = pt.get<std::string>("Root.ScanLowRange");
-        std::vector<std::string> low_range_vec;
-        split_string(low_range_str.c_str(), ".", low_range_vec);
-        assert(low_range_vec.size() == 4);
-        std::string high_range_str = pt.get<std::string>("Root.ScanHighRange");
-        std::vector<std::string> high_range_vec;
-        split_string(high_range_str.c_str(), ".", high_range_vec);
-        assert(high_range_vec.size() == 4);
-        unsigned low_range_sum = 0, high_range_sum = 0;
-        for(unsigned i = 0; i < 4; i++)
-        {
-            scan_low_range_[i] = (unsigned)atoi(low_range_vec[i].c_str());
-            scan_high_range_[i]= (unsigned)atoi(high_range_vec[i].c_str());
-            assert(scan_low_range_[i] < scan_high_range_[i]);
-            low_range_sum  += scan_low_range_[i];
-            high_range_sum += scan_high_range_[i];
-        }
-        assert(low_range_sum < high_range_sum);
-
         scan_interval_sec_ = pt.get<unsigned>("Root.ScanIntervalSec");
+        std::string ip_file = pt.get<std::string>("Root.ScanIpFile");
+        ScannerCounter all_scanner_counter;
+        all_scanner_counter.LoadFromFile(ip_file.c_str());
+
+        std::string nodes_str = pt.get<std::string>("Root.Nodes");
+        boost::regex expression("\\d+\\.\\d+\\.\\d+\\.\\d+");
+        boost::smatch what;
+        std::string::const_iterator start = nodes_str.begin();
+        std::string::const_iterator end   = nodes_str.end();
+        while( boost::regex_search(start, end, what, expression) )
+        {
+            for (size_t i = 0; i < what.size(); ++i)
+            {
+                if (what[i].matched)
+                    nodes_ip_.push_back(what[i]);
+            }
+            start = what[0].second;
+        }
+        int nodes_num = nodes_ip_.size();
+        assert(nodes_num > 0);
+        int cur_node_idx = -1;
+        std::string bind_ip = bind_ip_;
+        for(unsigned i = 0; i < nodes_ip_.size(); ++i)
+        {
+            if(bind_ip == nodes_ip_[i])
+            {
+                cur_node_idx = i;
+                break;
+            }
+        }
+        assert(cur_node_idx >= 0);
+        scanner_counter_ = all_scanner_counter.Split(nodes_num)[cur_node_idx];
 
         std::string try_http_url = pt.get<std::string>("Root.TryHttpUrl");
         try_http_url_ = strdup(try_http_url.c_str());
