@@ -6,7 +6,7 @@
 	<MaxConnectCount>304857</MaxConnectCount>
 	<MaxTxSpeedByte>1032160</MaxTxSpeedByte>
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>
-	<SynRetries>1</SynRetries>
+	<SynRetries>5</SynRetries>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
 	<ScanIpFile>ip.dat</ScanIpFile>
 	<ScanIntervalSec>3600</ScanIntervalSec>
