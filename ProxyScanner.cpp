@@ -326,7 +326,8 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
                 //not close connection, just return.
                 return;
             }
-            LOG_INFO("request CONNECT error: %s %u\n", proxy->ToString().c_str(), proxy->err_num_);
+            else if(resp)
+                LOG_INFO("request CONNECT error: %s %u\n", proxy->ToString().c_str(), resp->StatusCode);
             // no need judy proxy --> end
             if(proxy->type_ != Proxy::TYPE_UNKNOWN || !proxy_judy_uri_)
             {
@@ -413,12 +414,12 @@ void ProxyScanner::RequestGenerator(
     if(seq_idx  == 0)
     {
         Proxy * proxy = new Proxy();
-        strcpy(proxy->ip_, "1.13.234.192");
-        proxy->port_ = 80;
+        strcpy(proxy->ip_, "39.179.187.179");
+        proxy->port_ = 8123;
     
         //std::string req_url = "http://www.proxyjudge.net/";
         //assert(UriParse(req_url.c_str(), req_url.size(), *try_http_uri_) && HttpUriNormalize(*try_http_uri_));
-        proxy->state_ = Proxy::SCAN_JUDGE;
+        proxy->state_ = Proxy::SCAN_CONNECT;
         req_vec.push_back(CreateFetcherRequest(proxy));
     }
     ++seq_idx;
@@ -557,6 +558,7 @@ struct RequestData* ProxyScanner::CreateRequestData(void * contex)
     if(proxy->state_ == Proxy::SCAN_CONNECT)
     {
         req->Method = "CONNECT";
+        req->Version= "HTTP/1.1";
         std::string host_with_port = uri->Host();
         if(uri->HasPort())
             host_with_port += ":" + uri->Port();
@@ -596,12 +598,16 @@ void ProxyScanner::FreeRequestData(struct RequestData * request_data)
 
 IFetchMessage* ProxyScanner::CreateFetchResponse(const FetchAddress& address, void * contex)
 {
+    Proxy* proxy = (Proxy*) contex;
+    size_t max_body_size = max_http_body_size_;
+    if(proxy->state_ == Proxy::SCAN_CONNECT)
+        max_body_size = 0;
     HttpFetcherResponse* resp = new HttpFetcherResponse(
         address.remote_addr, 
         address.remote_addrlen,
         address.local_addr,
         address.local_addrlen,
-        max_http_body_size_, max_http_body_size_);
+        max_body_size, max_http_body_size_);
     return resp;
 }
 
