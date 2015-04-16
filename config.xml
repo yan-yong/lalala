@@ -2,8 +2,8 @@
 <Root>
 	<EthName>eth1</EthName>
 	<ListenPort>9090</ListenPort>
-	<WorkProcessCount>1</WorkProcessCount>
-	<WorkLog>worker_log_</WorkLog>
+	<WorkProcessCount>2</WorkProcessCount>
+	<WorkLog>worker_</WorkLog>
 	<MaxConnectCount>304857</MaxConnectCount>
 	<MaxTxSpeedByte>1900000</MaxTxSpeedByte>
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>

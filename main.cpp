@@ -61,16 +61,19 @@ static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter
     fetch_params.socket_rcvbuf_size  = 8096;
     fetch_params.socket_sndbuf_size  = 8096;
     //fetch_params.rx_speed_max = g_cfg->rx_max_speed_bytes_;, 
-    //只让第一个进程进行验证 和 数据同步
+
+    //只让第一个进程进行 "历史验证" 和 "数据同步"
     bool need_validate  = (proc_idx == 0);
     bool need_sync_data = (proc_idx == 0);
-    //char log_file_name[100];
-    //snprintf(log_file_name, 100, "%s%d", g_cfg->worker_log_name_.c_str(), proc_idx);
-    //int log_fd = open(log_file_name, O_CREAT | O_RDWR | O_TRUNC);
-    //assert(log_fd >= 0);
-    //assert(dup2(log_fd, 1) >= 0);
-    //assert(dup2(log_fd, 2) >= 0);
-    //close(log_fd);
+
+    //log redirection
+    char log_file_name[100];
+    snprintf(log_file_name, 100, "%s%d.log", g_cfg->worker_log_name_.c_str(), proc_idx);
+    int log_fd = open(log_file_name, O_CREAT | O_RDWR | O_TRUNC);
+    assert(log_fd >= 0);
+    assert(dup2(log_fd, 1) >= 0);
+    assert(dup2(log_fd, 2) >= 0);
+    close(log_fd);
 
     ProxyScanner proxy_scanner(g_proxy_set, fetch_params, &scanner_counter, need_validate, g_cfg->bind_ip_);
     proxy_scanner.SetScanIntervalSeconds(g_cfg->scan_interval_sec_);
@@ -139,7 +142,7 @@ static void SpawnWorkerProcess()
         if(child_pid == 0)
         {
             for(int j = 3; j < sysconf(_SC_OPEN_MAX); j++)
-                close(i);
+                close(j);
             SetupSignalHandler(true);
             WorkerRuntine(g_proc_info + i, scanner_counter);
         }
