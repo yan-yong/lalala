@@ -25,7 +25,7 @@ AC_ARG_WITH([common_path],
 	AS_HELP_STRING([--with-common_path=PATH],[default is ./common]),
 	    [
 	    	if test "x$withval" != "x";then
-			libev_path="$withval"
+			common_path="$withval"
 		fi
 	    ],
 	    [])
