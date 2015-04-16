@@ -3,8 +3,9 @@
 	<EthName>eth1</EthName>
 	<ListenPort>9090</ListenPort>
 	<WorkProcessCount>1</WorkProcessCount>
+	<WorkLog>worker_log_</WorkLog>
 	<MaxConnectCount>304857</MaxConnectCount>
-	<MaxTxSpeedByte>1832160</MaxTxSpeedByte>
+	<MaxTxSpeedByte>1900000</MaxTxSpeedByte>
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>
 	<SynRetries>1</SynRetries>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>

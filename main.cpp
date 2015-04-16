@@ -53,14 +53,26 @@ static void SetupSignalHandler(bool is_worker);
 
 static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter)
 {
+    int proc_idx = proc_info - g_proc_info;
     Fetcher::Params fetch_params;
     memset(&fetch_params, 0, sizeof(fetch_params));
     fetch_params.conn_timeout.tv_sec = g_cfg->connect_timeout_sec_;
     fetch_params.max_connecting_cnt  = g_cfg->max_connect_count_;
     fetch_params.socket_rcvbuf_size  = 8096;
     fetch_params.socket_sndbuf_size  = 8096;
-    //fetch_params.rx_speed_max = g_cfg->rx_max_speed_bytes_;
-    ProxyScanner proxy_scanner(g_proxy_set, fetch_params, &scanner_counter, g_cfg->bind_ip_);
+    //fetch_params.rx_speed_max = g_cfg->rx_max_speed_bytes_;, 
+    //只让第一个进程进行验证 和 数据同步
+    bool need_validate  = (proc_idx == 0);
+    bool need_sync_data = (proc_idx == 0);
+    //char log_file_name[100];
+    //snprintf(log_file_name, 100, "%s%d", g_cfg->worker_log_name_.c_str(), proc_idx);
+    //int log_fd = open(log_file_name, O_CREAT | O_RDWR | O_TRUNC);
+    //assert(log_fd >= 0);
+    //assert(dup2(log_fd, 1) >= 0);
+    //assert(dup2(log_fd, 2) >= 0);
+    //close(log_fd);
+
+    ProxyScanner proxy_scanner(g_proxy_set, fetch_params, &scanner_counter, need_validate, g_cfg->bind_ip_);
     proxy_scanner.SetScanIntervalSeconds(g_cfg->scan_interval_sec_);
     proxy_scanner.SetValidateIntervalSeconds(g_cfg->validate_interval_sec_);
     proxy_scanner.SetErrorRetryNum(g_cfg->proxy_error_retry_num_);
@@ -80,10 +92,9 @@ static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter
         sleep(1);
         time_t cur_time = current_time_ms();
         //第一个进程进行同步
-        if(proc_info == g_proc_info && 
+        if(need_sync_data && 
             cur_time - last_dump_time > g_cfg->dump_interval_seconds_ * 1000)
         {
-            
             last_dump_time = cur_time;
             //记录offset
             scanner_counter.GetOffset(proc_info->offset_);

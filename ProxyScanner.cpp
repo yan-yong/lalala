@@ -16,9 +16,11 @@ const unsigned TCP_DATA_HEADER_SIZE  = 54;
 
 ProxyScanner::ProxyScanner(ProxySet * proxy_set,
     Fetcher::Params fetch_params,
-    ScannerCounter * scanner_counter, 
+    ScannerCounter * scanner_counter,
+    bool need_validate, 
     const char* ip_addr_str):
     scanner_counter_(scanner_counter),
+    need_validate_(need_validate),
     try_http_uri_(NULL), try_http_size_(0),
     try_https_uri_(NULL),try_https_size_(0),
     proxy_judy_uri_(NULL), 
@@ -449,6 +451,7 @@ void ProxyScanner::RequestGenerator(
     if(n > fetcher_quota)
         n = fetcher_quota;
 
+    /// 1) 处理https的请求
     //计算可以验证的代理数目，主要有此时的入带宽决定
     if(cur_rx_traffic_ < max_rx_traffic_)
     {
@@ -472,10 +475,7 @@ void ProxyScanner::RequestGenerator(
         cur_rx_traffic_ = 0;
     }
     int max_validate_num = each_validate_max_;
-    //LOG_INFO("###### cur_rx_traffic_: %zd --> %d\n", 
-    //    cur_rx_traffic_, max_validate_num);
-
-    /// 1) 处理https的请求
+    //LOG_INFO("###### cur_rx_traffic_: %zd --> %d\n", cur_rx_traffic_, max_validate_num);
     while(!req_queue_.empty() && n > 0 && max_validate_num > 0)
     {
         RawFetcherRequest req = req_queue_.front();
@@ -486,7 +486,7 @@ void ProxyScanner::RequestGenerator(
     }
 
     /// 2) 处理代理验证的请求
-    if(validate_time_ + validate_interval_ <= cur_time && n > 0)
+    if(need_validate_ && validate_time_ + validate_interval_ <= cur_time && n > 0)
     {
         if(validate_idx_ == 0)
             LOG_INFO("validate begin.\n");

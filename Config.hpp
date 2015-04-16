@@ -40,6 +40,7 @@ struct Config
     std::vector<uint16_t>    port_vec_;
     std::vector<std::string> nodes_ip_;
     ScannerCounter     scanner_counter_;
+    std::string  worker_log_name_;
 
 public:
     Config(const char* config_file)
@@ -174,6 +175,8 @@ public:
 
         rx_max_speed_bytes_ = pt.get<size_t>("Root.MaxRxSpeedByte");
         //max_http_body_size_ = pt.get<size_t>("Root.MaxHttpBodySize");
+
+        worker_log_name_ = pt.get<std::string>("Root.WorkLog");
 
         return 0;
     }

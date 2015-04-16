@@ -43,6 +43,7 @@ public:
     ProxyScanner(ProxySet * proxy_set,
         Fetcher::Params fetch_params,
         ScannerCounter * scanner_counter,
+        bool need_validate,
         const char* ip_addr_str = NULL);
     ~ProxyScanner();
     void SetHttpTryUrl(std::string try_url, size_t page_size);
@@ -62,6 +63,7 @@ public:
 protected:
     Fetcher::Params params_;
     ScannerCounter * scanner_counter_;
+    bool need_validate_;
     Fetcher::Params fetcher_params_;
     URI*    try_http_uri_;
     size_t  try_http_size_;
