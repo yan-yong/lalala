@@ -484,7 +484,7 @@ void ProxyScanner::RequestGenerator(
         --max_validate_num;
     }
 
-    /// 2) 处理验证的请求
+    /// 2) 处理代理验证的请求
     if(validate_time_ + validate_interval_ <= cur_time && n > 0)
     {
         if(validate_idx_ == 0)
@@ -507,6 +507,7 @@ void ProxyScanner::RequestGenerator(
             LOG_INFO("put validate request: %s\n", proxy->ToString().c_str());
         }
     }
+
     /// 3) 处理扫描的请求
     if(n > 0)
         GetScanProxyRequest(n, req_vec);
