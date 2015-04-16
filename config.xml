@@ -1,23 +1,22 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <Root>
-	<EthName>eth0</EthName>
+	<EthName>eth1</EthName>
 	<ListenPort>9090</ListenPort>
 	<WorkProcessCount>1</WorkProcessCount>
 	<MaxConnectCount>304857</MaxConnectCount>
-	<MaxTxSpeedByte>1032160</MaxTxSpeedByte>
+	<MaxTxSpeedByte>1832160</MaxTxSpeedByte>
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>
-	<SynRetries>5</SynRetries>
+	<SynRetries>1</SynRetries>
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
 	<ScanIpFile>ip.dat</ScanIpFile>
 	<ScanIntervalSec>3600</ScanIntervalSec>
 	<Nodes>
-		192.168.15.235; 
-		192.168.15.234;
+		59.108.122.184;
 	</Nodes>
 	<ValidateIntervalSec>600</ValidateIntervalSec>
-	<ProxyErrorRetryNum>5</ProxyMaxErrorRetryNum>
-	<ScanPort>80</ScanPort>
-	<TryHttpUrl size = "43">http://s.qhupdate.com/sou/home.gif</TryHttpUrl>
+	<ProxyErrorRetryNum>3</ProxyMaxErrorRetryNum>
+	<ScanPort>80:8080:3128:8118:8123</ScanPort>
+	<TryHttpUrl size = "1270">http://www.example.com/</TryHttpUrl>
 	<TryHttpsUrl size = "84">https://i.alipayobjects.com/i/ecmng/png/201501/4Jdkug9K2v.png</TryHttpsUrl>
 	<ProxyJudyUrl maxsize = "1200">http://www.proxyjudge.net/</ProxyJudyUrl>
 	<ShmKey>12345</ShmKey>
