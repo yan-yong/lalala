@@ -191,10 +191,8 @@ void ProxyScanner::GetScanProxyRequest(
     {
         if(scan_time_ + scan_interval_ > cur_time)
             return;
-        IpTriple offset;
-        scanner_counter_->GetOffset(offset);
         LOG_INFO("####### Start scan from %s ########\n",
-            offset.ToString().c_str());
+            scanner_counter_->offset_.ToString().c_str());
         scan_time_ = cur_time;
     }
 
@@ -207,14 +205,12 @@ void ProxyScanner::GetScanProxyRequest(
             ++(*scanner_counter_);
         }
 
-        IpTriple offset;
-        scanner_counter_->GetOffset(offset);
         //检查是否结束
         if(scanner_counter_->IsEnd())
         {
 
             LOG_INFO("####### End scan from %s ########\n", 
-                offset.ToString().c_str());
+                scanner_counter_->offset_.ToString().c_str());
             port_idx_ = 0;
             scanner_counter_->Reset();
             return;
@@ -222,7 +218,7 @@ void ProxyScanner::GetScanProxyRequest(
 
         uint16_t port = scan_port_[port_idx_];
         char ip_str[200];
-        snprintf(ip_str, 200, "%s", offset.ToString().c_str());
+        snprintf(ip_str, 200, "%s", scanner_counter_->offset_.ToString().c_str());
         Proxy * proxy = new Proxy(ip_str, port);
         proxy->state_ = Proxy::SCAN_HTTP;
         req_vec.push_back(CreateFetcherRequest(proxy));
@@ -367,7 +363,7 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
         {
             // last --> end
             const char *pat_str = "HTTP_X_FORWARDED_FOR";
-            if(fetch_result.err_num == 0 && resp)
+            if(fetch_result.err_num == 0 && resp && resp->StatusCode == 200)
             {
                 resp->Body.push_back('\0');
                 if(strstr(&(resp->Body[0]), pat_str))

@@ -72,10 +72,7 @@ static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter
     proxy_scanner.SetMaxRxSpeed(g_cfg->rx_max_speed_bytes_ / g_cfg->worker_process_count_);
     proxy_scanner.SetSynRetryTimes(g_cfg->syn_retries_);
     proxy_scanner.Start();
-
-    char proc_id_str[100];
-    snprintf(proc_id_str, 100, "%d %s", getpid(), proc_info->offset_.ToString().c_str());
-    LOG_INFO("Worker process %s start.\n", proc_id_str);
+    LOG_INFO("Worker process %d %s start.\n", getpid(), proc_info->offset_.ToString().c_str());
 
     time_t last_dump_time = current_time_ms();
     while(!g_stop)
@@ -98,9 +95,9 @@ static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter
     }
 
     scanner_counter.GetOffset(proc_info->offset_);
-    LOG_INFO("Worker process %s stopping ...\n", proc_id_str);
+    LOG_INFO("Worker process %d %s stopping ...\n", getpid(), proc_info->offset_.ToString().c_str());
     proxy_scanner.Stop();
-    LOG_INFO("Worker process %s end.\n", proc_id_str);
+    LOG_INFO("Worker process %d %s end.\n", getpid(), proc_info->offset_.ToString().c_str());
     delete g_cfg;
     g_cfg = NULL;
     exit(0);
