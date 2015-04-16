@@ -273,7 +273,7 @@ void ProxyScanner::ProcessResult(const RawFetcherResult& fetch_result)
         //不是errno110, 是因为对方发了个包过来了
         cur_rx_traffic_ += TCP_DATA_HEADER_SIZE;
     }
-    if(fetch_result.err_num == 0 && resp)
+    if(fetch_result.err_num == 0 && resp && proxy->state_ != Proxy::SCAN_CONNECT)
     {
         //http数据入包
         cur_rx_traffic_ += resp->Body.size();
