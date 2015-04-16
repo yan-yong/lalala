@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <Root>
-	<EthName>eth1</EthName>
+	<EthName>eth0</EthName>
 	<ListenPort>9090</ListenPort>
-	<WorkProcessCount>2</WorkProcessCount>
-	<WorkLog>worker_</WorkLog>
+	<WorkerProcessCount>2</WorkerProcessCount>
+	<WorkerLog>worker.log</WorkerLog>
+	<MasterLog>master.log</MasterLog>
 	<MaxConnectCount>304857</MaxConnectCount>
 	<MaxTxSpeedByte>1900000</MaxTxSpeedByte>
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>
@@ -12,7 +13,7 @@
 	<ScanIpFile>ip.dat</ScanIpFile>
 	<ScanIntervalSec>3600</ScanIntervalSec>
 	<Nodes>
-		59.108.122.184;
+		192.168.15.235;
 	</Nodes>
 	<ValidateIntervalSec>600</ValidateIntervalSec>
 	<ProxyErrorRetryNum>3</ProxyMaxErrorRetryNum>

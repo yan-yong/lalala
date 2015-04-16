@@ -51,9 +51,37 @@ class ProxyService: public HttpServer
 
 static void SetupSignalHandler(bool is_worker);
 
+static void LogRedirection(const char* log_name)
+{
+#ifndef PROXY_DEBUG
+    int log_fd = open(log_name, O_CREAT | O_RDWR | O_TRUNC, 0644);
+    assert(log_fd >= 0);
+    assert(dup2(log_fd, 1) >= 0);
+    assert(dup2(log_fd, 2) >= 0);
+    close(log_fd);
+#endif
+}
+
+static void Daemon()
+{
+#ifndef PROXY_DEBUG
+    if (fork() != 0)
+        exit(0);
+    if (setsid() == -1)
+        exit(0);
+    signal(SIGHUP, SIG_IGN);
+#endif
+}
+
 static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter)
 {
     int proc_idx = proc_info - g_proc_info;
+
+    //log redirection
+    char log_file_name[100];
+    snprintf(log_file_name, 100, "%s.%d", g_cfg->worker_log_name_.c_str(), proc_idx);
+    LogRedirection(log_file_name);
+
     Fetcher::Params fetch_params;
     memset(&fetch_params, 0, sizeof(fetch_params));
     fetch_params.conn_timeout.tv_sec = g_cfg->connect_timeout_sec_;
@@ -65,15 +93,6 @@ static void WorkerRuntine(ProcessInfo* proc_info, ScannerCounter scanner_counter
     //只让第一个进程进行 "历史验证" 和 "数据同步"
     bool need_validate  = (proc_idx == 0);
     bool need_sync_data = (proc_idx == 0);
-
-    //log redirection
-    char log_file_name[100];
-    snprintf(log_file_name, 100, "%s%d.log", g_cfg->worker_log_name_.c_str(), proc_idx);
-    int log_fd = open(log_file_name, O_CREAT | O_RDWR | O_TRUNC);
-    assert(log_fd >= 0);
-    assert(dup2(log_fd, 1) >= 0);
-    assert(dup2(log_fd, 2) >= 0);
-    close(log_fd);
 
     ProxyScanner proxy_scanner(g_proxy_set, fetch_params, &scanner_counter, need_validate, g_cfg->bind_ip_);
     proxy_scanner.SetScanIntervalSeconds(g_cfg->scan_interval_sec_);
@@ -231,7 +250,6 @@ int main(int argc, char* argv[])
     g_cfg = new Config(config_file.c_str());
     g_cfg->ReadConfig();
 
-    /* initialize */
     // set tcp syn retry times. notice: will CHANGE system config!!!
     FILE* syn_fid = fopen("/proc/sys/net/ipv4/tcp_syn_retries", "w");
     assert(syn_fid);
@@ -242,7 +260,13 @@ int main(int argc, char* argv[])
     g_proxy_set = new ProxySet(*g_shm, g_cfg->max_proxy_num_);
     g_proc_info = g_shm->New<ProcessInfo>(MAX_PROCESS_CNT);
     for(int i = 0; i < MAX_PROCESS_CNT; i++)
-        g_proc_info[i].pid_ = 0; 
+        g_proc_info[i].pid_ = 0;
+ 
+    /* log redirection */
+    LogRedirection(g_cfg->master_log_name_.c_str());
+
+    /* make master to be a daemon, NO need to use nohup to start*/
+    Daemon();
 
     /* spwan worker processes */
     LOG_INFO("Master process starting ...\n");

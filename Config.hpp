@@ -41,6 +41,7 @@ struct Config
     std::vector<std::string> nodes_ip_;
     ScannerCounter     scanner_counter_;
     std::string  worker_log_name_;
+    std::string  master_log_name_;
 
 public:
     Config(const char* config_file)
@@ -102,7 +103,7 @@ public:
         std::string port_str = pt.get<std::string>("Root.ListenPort");
         listen_port_ = strdup(port_str.c_str());
         assert(atoi(listen_port_) > 0);
-        worker_process_count_ = pt.get<unsigned>("Root.WorkProcessCount");
+        worker_process_count_ = pt.get<unsigned>("Root.WorkerProcessCount");
         max_connect_count_ = pt.get<unsigned>("Root.MaxConnectCount");
         connect_timeout_sec_ = pt.get<unsigned>("Root.ConnectTimeoutSec");
 
@@ -176,7 +177,8 @@ public:
         rx_max_speed_bytes_ = pt.get<size_t>("Root.MaxRxSpeedByte");
         //max_http_body_size_ = pt.get<size_t>("Root.MaxHttpBodySize");
 
-        worker_log_name_ = pt.get<std::string>("Root.WorkLog");
+        worker_log_name_ = pt.get<std::string>("Root.WorkerLog");
+        master_log_name_  = pt.get<std::string>("Root.MasterLog");
 
         return 0;
     }
