@@ -1,29 +1,53 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <Root>
-	<EthName>eth0</EthName>
+	<!-- 绑定的网卡 -->
+	<EthName>eth1</EthName>
+	<!-- 监听端口-->
 	<ListenPort>9090</ListenPort>
+	<!-- 工作进程数目-->
 	<WorkerProcessCount>2</WorkerProcessCount>
+	<!-- 工作进程日志-->
 	<WorkerLog>worker.log</WorkerLog>
+	<!-- 主进程日之文件-->
 	<MasterLog>master.log</MasterLog>
+	<!-- 设置进程的最大连接数目-->
 	<MaxConnectCount>304857</MaxConnectCount>
-	<MaxTxSpeedByte>1900000</MaxTxSpeedByte>
+	<!-- 最大出带宽, Byte -->
+	<MaxTxSpeedByte>2500000</MaxTxSpeedByte>
+	<!-- 最大入带宽, Byte -->
 	<MaxRxSpeedByte>548576</MaxRxSpeedByte>
+	<!-- connect时重试的数目，跟出带宽有关，数目越大越费出带宽 -->
 	<SynRetries>1</SynRetries>
+	<!-- 连接超时时间-->
 	<ConnectTimeoutSec>10</ConnectTimeoutSec>
+	<!-- ip段扫描的范围-->
 	<ScanIpFile>ip.dat</ScanIpFile>
-	<ScanIntervalSec>3600</ScanIntervalSec>
+	<!-- 多久扫一轮-->
+	<ScanIntervalSec>600</ScanIntervalSec>
+	<!-- 部署扫描的节点的数目-->
 	<Nodes>
-		192.168.15.235;
+		103.240.16.119;
 	</Nodes>
+	<!-- 验证的时间间隔-->
 	<ValidateIntervalSec>600</ValidateIntervalSec>
-	<ProxyErrorRetryNum>3</ProxyMaxErrorRetryNum>
+	<!-- 代理允许连续失败的最大次数-->
+	<ProxyErrorRetryNum>5</ProxyMaxErrorRetryNum>
+	<!-- 指定扫描端口-->
 	<ScanPort>80:8080:3128:8118:8123</ScanPort>
+	<!-- 发现http代理时，使用的请求-->
 	<TryHttpUrl size = "1270">http://www.example.com/</TryHttpUrl>
+	<!-- 发现https代理时, 使用的请求-->
 	<TryHttpsUrl size = "84">https://i.alipayobjects.com/i/ecmng/png/201501/4Jdkug9K2v.png</TryHttpsUrl>
+	<!-- 发现代理类型，使用的请求-->
 	<ProxyJudyUrl maxsize = "1200">http://www.proxyjudge.net/</ProxyJudyUrl>
+	<!-- 共享内存的key值-->
 	<ShmKey>12345</ShmKey>
+	<!-- 共享内存的大小-->
 	<ShmSize>20485760</ShmSize>
+	<!-- 估计发现的最大代理数目-->
 	<MaxProxyNum>200000</MaxProxyNum>
+	<!-- 共享内存持久化文件-->
 	<ShmDumpFile>shm.dump</ShmDumpFile>
+	<!-- 共享内存持久化间隔时间-->
 	<ShmDumpIntervalSec>600</ShmDumpIntervalSec>
 </Root>
